@@ -5,10 +5,10 @@
 2. [Chapter 2: How Spark Works](#Chapter2)
 3. [Chapter 3: DataFrames, Datasets, and SparkSQL](#Chapter3)
 4. [Chapter 4: Joins (SQL and Core)](#Chapter4)
+5. [Chapter 5: Effective Transformations](#Chapter5)
 
 ## Chapter 2: How Spark Works<a name="Chapter2"></a>
-
-Spark is a computational engine that can be used in combination with storage system such as S3, HDFS or Cassandra, and is usually orchestrated with some cluster manager system like Mesos or Yarn (or Spark in standalone mode).
+Spark is a computational engine that can be used in combination with storage system such as S3, HDFS or Cassandra, and is usually orchestrated with some cluster management systems like Mesos or Yarn (or Spark in standalone mode).
 
 #### Components
     * Spark core: Spark is build around Resiliant Distributed Datasets concept (RDDs), which is a lazy evaluated, statically typed collection in which transformations can be applied. There are other first-party components to provide enhanced functionality including SparkSQL, SparkMLlib, SparkML, GraphX.  
@@ -69,8 +69,8 @@ A Stage corresponds to a shuffle dependency on a wide transformation in a Spark 
 ###### Tasks
 Is the smallest unit of execution representing a local computation. One task can't be executed in more than one executor. the number of tasks per stage corresponds to the number of partitions in the output RDD on that stage. Spark can't run more tasks in parallel than the number of executor cores allocated for the application.
 
-## Chapter 3: DataFrames, Datasets, and SparkSQL<a name="Chapter3"></a>
 
+## Chapter 3: DataFrames, Datasets, and SparkSQL<a name="Chapter3"></a>
 `Datasets` are like RDD with additional schema information used to provide more efficient storage and optimization. `DataFrames` are like `Datasets` of special `Row[T]` objects.
 
 #### Getting Started with the SparkSession (Or HiveContext or SQLContext)
@@ -125,4 +125,38 @@ Catalyst is the SparkSQL query optimizer, which takes the query plan and transfo
 #### JDBC/ODBC Server
 SparkSQL a JDBC server to allow access to external systems to its resources. This JDBC server is based on the HiveServer2. To start and stop this server from the command line use: `./sbin/start-thriftserver.sh` and `./sbin/stop-thriftserver.sh`. You can set config parameters using `--hiveconf <key=value>`. To Start it programmatically you can create the server with `HiveTriftServer2.startWithContext(hiveContext)`.
 
+
 ## Chapter 4: Joins (SQL and Core)<a name="Chapter4"></a>
+#### Core Spark Joins
+Joins are expensive as they require the keys from each RDD to be in the same partition so they can be combined (the data must be suffled if the two RDDs don't have the same partitioner or should be colocated if they do). The cost of the join increases with the number of keys to join and the distance the records has to travel.
+
+The default join operation in spark includes only keys present in the two RDDs. In case of multiple values per key, it provides all permutations for value/key (which can cause performance problems in case of duplicate keys). Guidelines:
+
+    * If there is duplicate keys, it might be better to do a `distinct` or `combineByKey` operation prior to the join or use the `cogroup` to handle duplicates.
+    * If keys are not present in both RDD, use Outer Join if you don't want to lose data, and filter the data after.
+    * In case one RDD has an easy to define subset of keys, might be better to reduce the other rdd before the join to avoid a big suffle of data that would be thrown anyway. (For example it might be possible to filter some rows before joining, avoiding shuffling those rows if we don't need them for the result).
+    
+Spark needs the data to be join to exist in the same partition, the default implementation of join in spark is the _shuffled hash join_. The default partitioner partitions the second RDD with the same partition than the first to ensure the data is in the same partition. The shuffle can be avoid if:
+
+    * Both RDDs has a known partitioner
+    * If one of the dataset can fit in memory so we can use a broadcast hash join
+    
+To speed up the joins we can use different techniques:
+    
+    * Assigning a known partitioner: If there is an operation that requires a shuffle (`aggregateByKey` or `reduceByKey`) you can pass a partitioner with the same number of partitions as an explicit argument to the first operation and persist the RDD before the join.
+    * Broadcast Hash Join: The BHJ pushes the smaller RDD to each of the worker nodes and does a map-side combine with each of the partitions of the larger RDD. This is recommended if one of the RDDs can fit in memory so it avoids shuffles. To use it, collect the smaller RDD as a map in the driver and use `mapPartitions` to combine elements:
+    
+        val keyValueMap = smallRDD.collectAsMap()
+        bigRDD.sparkContext.broadcast(keyValueMap)
+        bigRDD.mapPartitions(iter=>
+        keyValueMap.get(...)
+ 
+ #### SQL Joins
+ Types of Joins:
+ 
+     * DataFrame Joins: The structure of a join in DataFrames is df.join(otherDF, sqlCondition, joinType). As with RDD non unique keys yields cross product of rows. Joins can be one of "inner", "left_outer", "right_outer", "full_outher", "left_anti" (filtering the left table to get only rows that has a key on the right table) or "left_semi" (filtering the left table to get only rows that does not have a key on the right table).
+     * Self Joins: To avoid Column name duplication you need to alias the dataframe to have different names.
+     * Broadcast has joins: Equivalent to the RDD broadcast has join. Example: df1.join(broadcast(df2), "key")
+     * Datasets Joins: It is done with `joinWith`, which yields a tuple of the different record types. Example: ds1.joinWith(ds2,$"columnInDs1" == $"columnInDs2", left_outer)  
+    
+## Chapter : Effective Transformations<a name="Chapter5"></a>

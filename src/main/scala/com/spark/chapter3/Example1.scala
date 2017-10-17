@@ -30,8 +30,9 @@ object Example1 {
     }
 
     pandaInfo.select(pandaInfo("attributes")(0) / pandaInfo("attributes")(1)).as("squishyness")
-
     Window.orderBy(pandaInfo("id")).partitionBy("pt").rangeBetween(-10,10)
+
+    df.select("pandas").
   }
 
   def encodePandaType(pandaInfo:DataFrame): Unit ={
