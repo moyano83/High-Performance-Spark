@@ -1,11 +1,15 @@
 # High-Performance-Spark
 
 ## Table of contents:
-
+1. [Chapter 1: Introduction to High Performance Spark](#Chapter1)
 2. [Chapter 2: How Spark Works](#Chapter2)
 3. [Chapter 3: DataFrames, Datasets, and SparkSQL](#Chapter3)
 4. [Chapter 4: Joins (SQL and Core)](#Chapter4)
 5. [Chapter 5: Effective Transformations](#Chapter5)
+6. [Chapter 6: Working with Key/Value data](#Chapter6)
+
+## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
+Skipped.
 
 ## Chapter 2: How Spark Works<a name="Chapter2"></a>
 Spark is a computational engine that can be used in combination with storage system such as S3, HDFS or Cassandra, and is usually orchestrated with some cluster management systems like Mesos or Yarn (or Spark in standalone mode).
@@ -25,7 +29,7 @@ Spark offers 3 types of memory management for data:
 
     * In memory as deserialized java objects: The faster, but less efficient
     * As serialized data: Converts objects into streams of bytes before sending them to the network. Adds overhead in deserializing the object before using it, more CPU intensive and memory efficient.   
-    * On disk: When the RDD is too large to be stored in memory we can use this type, it is the slowest, but more resilient to failures. Sometimes there is no other choice if the RDD is too massive.
+    * On disk: When the RDD is too large to be stored in memory we can use this type, it is the slowest, but more resilient to failures. Sometimes there is no other choice if the RDD is too big.
 
 To define which type of memory management to use, we call the `persist()` method on the RDD (defaults to deserialized in memory java objects).
 An RDD can be created in 3 ways: by transforming an existing RDD, from a SparkContext or by converting a DataFrame or Dataset. A SparkContext represents the connection between the cluster and the running spark application, it can create RDD through `parallelize` or `createRDD` methods, or by reading from stable storage like HDFS, text files.
@@ -45,7 +49,7 @@ Narrow transformations are those in which each partition in the child RDD has si
 Wide dependencies requires the data to be partitioned according to the value of their key. If an operation requires a shuffle, then Spark adds a `ShuffledDependency` to the dependency list of the RDD.
 
 #### Spark Job Scheduling
-A spark program consist of a driver process with the logic of the program, and executor processes scattered across the cluster. The spark program runs on the driver and sends instructions to the executors. Different Spark applications are scheduled by the cluster manager each one corresponding to one SparkContext. Spark program can run multiple concurrent jobs, each one corresponding to an action called in the RDD. Spark allocates resources to the program statically (finite maximum number of resources on the cluster reserved for the duration of the application), or dinamically (executors are added and removed as needed based on a set of heuristic estimations for resource requirement).
+A spark program consist of a driver process with the logic of the program, and executor processes scattered across the cluster. The spark program runs on the driver and sends instructions to the executors. Different Spark applications are scheduled by the cluster manager each one corresponding to one SparkContext. Spark program can run multiple concurrent jobs, each one corresponding to an action called in the RDD. Spark allocates resources to the program statically (finite maximum number of resources on the cluster reserved for the duration of the application), or dynamically (executors are added and removed as needed based on a set of heuristic estimations for resource requirement).
 A Spark application is a set of jobs defined by one spark context in the driver program. It is initiated when the `SparkContext` is instantiated. When a program starts each executor has slots for running the tasks needed to complete the job. The sequence of execution is:
 
     * The driver program pings the cluster manager.
@@ -111,8 +115,7 @@ For example `df.write.mode(SaveMode.Append).save("outputPath/")`. If you know ho
 
 #### Datasets
 Extension that provides additional compile-time type checking (`DataFrames` are a specialized version of `Datasets`). To convert a `DataFrame` to a `Dataset` use the `as[ElementType]`, where `ElementType` must be a case class or similar (types that Spark can represent). To create a `Dataset` from local collections use `sqlContext.createDataSet(...)`. To create a `Dataset` from an `RDD`, transform it first to a `DataFrame` and then to a `Dataset`. In the same way a `Dataset` has an `.rdd` and `toDF` methods to do the inverse transformation.
-`Datasets` mix well with scala and Java, and exposes `filter`,`map`,`flatMap` and `mapPartitions` methods. It also have a typed select:
-`ds.select($"id".as[Long], $"column1".as[String])`.
+`Datasets` mix well with scala and Java, and exposes `filter`,`map`,`flatMap` and `mapPartitions` methods. It also have a typed select: `ds.select($"id".as[Long], $"column1".as[String])`.
 `groupBy` on `Dataset` returns a `GroupedDataset` or a `KeyValueGroupedDataset` when grouped with an arbitrary function and a `RelationalGroupedDataset` if grouped with a relational/Dataset DSL expression. You can apply functions to grouped data using the function `mapGroups(...)`.
 
 #### Extending with User-Defined Functions and Aggregate Functions (UDFs and UDAFs)
@@ -120,7 +123,7 @@ UDFs and UDAFs can be accessed from inside regular SQL expressions so it can lev
 To use a UDF you have to register it first like this `sqlContext.udf.register("strLen", (s:String) => s.lenght)` so you can use it after in SQL text. To use UDAFs you need to extend the `UserDefinedAggregateFunction` trait and implement some functions.      
  
 #### Query Optimizer
-Catalyst is the SparkSQL query optimizer, which takes the query plan and transform it into an execution Plan. Using techniques like pattern matching, the optimizer builds a physical plan based on rule-based and cost-based optimizations. Spark might also use code generation used the _Janino_ library. For very large query plans the optimizer might run into challenges, that can be solved by converting the `DataFrame`/`Dataset` to an `RDD`, cache it perform the iterative operations and convert the `RDD` back.
+Catalyst is the SparkSQL query optimizer, which takes the query plan and transform it into an execution Plan. Using techniques like pattern matching, the optimizer builds a physical plan based on rule-based and cost-based optimizations. Spark might also use code generation using the _Janino_ library. For very large query plans the optimizer might run into problems, that can be solved by converting the `DataFrame`/`Dataset` to an `RDD`, cache it perform the iterative operations and convert the `RDD` back.
 
 #### JDBC/ODBC Server
 SparkSQL a JDBC server to allow access to external systems to its resources. This JDBC server is based on the HiveServer2. To start and stop this server from the command line use: `./sbin/start-thriftserver.sh` and `./sbin/stop-thriftserver.sh`. You can set config parameters using `--hiveconf <key=value>`. To Start it programmatically you can create the server with `HiveTriftServer2.startWithContext(hiveContext)`.
@@ -128,7 +131,7 @@ SparkSQL a JDBC server to allow access to external systems to its resources. Thi
 
 ## Chapter 4: Joins (SQL and Core)<a name="Chapter4"></a>
 #### Core Spark Joins
-Joins are expensive as they require the keys from each RDD to be in the same partition so they can be combined (the data must be suffled if the two RDDs don't have the same partitioner or should be colocated if they do). The cost of the join increases with the number of keys to join and the distance the records has to travel.
+Joins are expensive as they require the keys from each RDD to be in the same partition so they can be combined (the data must be shuffled if the two RDDs don't have the same partitioner or should be colocated if they do). The cost of the join increases with the number of keys to join and the distance the records has to travel.
 
 The default join operation in spark includes only keys present in the two RDDs. In case of multiple values per key, it provides all permutations for value/key (which can cause performance problems in case of duplicate keys). Guidelines:
 
@@ -144,7 +147,7 @@ Spark needs the data to be join to exist in the same partition, the default impl
 To speed up the joins we can use different techniques:
     
     * Assigning a known partitioner: If there is an operation that requires a shuffle (`aggregateByKey` or `reduceByKey`) you can pass a partitioner with the same number of partitions as an explicit argument to the first operation and persist the RDD before the join.
-    * Broadcast Hash Join: The BHJ pushes the smaller RDD to each of the worker nodes and does a map-side combine with each of the partitions of the larger RDD. This is recommended if one of the RDDs can fit in memory so it avoids shuffles. To use it, collect the smaller RDD as a map in the driver and use `mapPartitions` to combine elements:
+    * Broadcast Hash Join: This join pushes the smaller RDD to each of the worker nodes and does a map-side combine with each of the partitions of the larger RDD. This is recommended if one of the RDDs can fit in memory so it avoids shuffles. To use it, collect the smaller RDD as a map in the driver and use `mapPartitions` to combine elements:
     
         val keyValueMap = smallRDD.collectAsMap()
         bigRDD.sparkContext.broadcast(keyValueMap)
@@ -159,4 +162,74 @@ To speed up the joins we can use different techniques:
      * Broadcast has joins: Equivalent to the RDD broadcast has join. Example: df1.join(broadcast(df2), "key")
      * Datasets Joins: It is done with `joinWith`, which yields a tuple of the different record types. Example: ds1.joinWith(ds2,$"columnInDs1" == $"columnInDs2", left_outer)  
     
-## Chapter : Effective Transformations<a name="Chapter5"></a>
+## Chapter 5: Effective Transformations<a name="Chapter5"></a>
+
+#### Narrow vs Wide Transformations
+Wide transformations are those that requires a shuffle, narrow transformations don't. On shuffling operations, if the data needs to pass from one partition to another, it does so by passing it from the executor A to the driver, and then from the driver to executor B.
+Narrow dependencies do not require data to be moved across partitions hence does not require communication with the driver node (each series of narrow transformations can be computed on the same stage of the query execution plan). Stages have to be executed sequentially, thus this limits parallelization (thus the cost of a failure in an RDD with wide dependency is higher). This means that chaining together transformations with wide dependencies increases the risk of having to redo very expensive computations (if the risk is high, it might worth to checkpoint intermediate results of the RDD).
+Coalesce is a narrow dependency if it reduces the number of partitions (does not require shuffling), and it is wide transformation if it increases the number of partitions.
+
+#### What type of RDD does your transformation return?
+Performance in RDD operations is dependant both on the data type contained in each record and in the underlying RDD type (some RDD stores information about the ordering or locality of the data from previous transformations). 
+Preserving the RDD type is important because many transformations are only defined on RDDs of a particular type (max, min and sum can only be performed on numbers). One of the techniques to use to preserve the type is to define subroutines with input and output types defined. The type can be lost when working with `DataFrame` as `RDD` as in this transformation the schema is thrown away(althought you can store the schema in a variable to apply it after).
+
+#### Minimizing object creation
+There are techniques to reduce the amount of objects created (an hence minimizing GC) like reusing existing objects or using smaller data structures. An example of object reuse is through the scala `this.type` in accumulator objects (although is preferably not to use mutable state in Spark or Scala):
+
+```scala
+    //Example function of an accumulator
+    def sequenceOp(arguments:String): this.type={
+        //some logic
+        this
+    }
+``` 
+ 
+ An example of using smaller data structures is trying to use primitive data types instead of custom classes (Arrays instead of case classes or tuples for example). Converting between different types creates also intermediate objects and should be avoided. 
+ 
+#### Iterator-to-Iterator Transformations with mapPartitions
+The RDD `mapPartition` takes a function from an input (records in a partition) Iterator to an output iterator. It is important to write this function in such a way that avoids loading the partition in memory (implicitly converting it to a list). When a transformation takes and returns an iterator without forcing it through another collection it is called Iterator-to-Iterator transformation.
+Iterator can only be traversed once (extends the `TraversableOnce` trait), and defines methods like `map`, `flatMap`, `++` (addition), `foldLeft`, `foldRight`, `reduce`, `forall`, `exists`, `next` and `foreach`. Distinct to the Spark transformations, iterator transformations are executed linearly, one element at a time rather than in parallel. 
+Transformations using iterators allows Spark to spill data to disk selectively allowing spark to manipulate partitions that are too large to fit in memory on a single executor. Iterator to iterator transformations also avoid unnecessary object creation and intermediate data structures.
+
+#### Set operations
+RDDs differs on the mathematical sets in the way it handles duplicates, for example union combines the arguments thus the `union` operation size will be the sum of the two RDDs size. `intersection` and `substract` results can be unexpected as the RDDs might contain duplicates.
+
+#### Reducing Setup Overhead
+For set up operations like open a DB connection, it is recommended to do the setup at the map partition, and then the transformations using the iterator functions. Spark has two type of shared variables, broadcast variables (written in driver) and accumulators (written in workers).
+Broadcast variables are written on the driver and a copy of it is sent to each machine (not one per task) for example a small table or a prediction model:
+```scala
+    sc.broadcast(theVariable) //Set variable
+    rdd.filter(x => x== theVariable.value) //theVariable is a wrapper, to get the value call the value method
+```
+If a setup can be serialized, a broadcast variable with `transient lazy val` modifiers can be used. Use `unpersist` to remove explicity a broadcasted variable.
+Accumulators are used to collect by-product information from an action (computation) and then bring the result to the driver. If the computation takes times multiple times then the accumulator would also be update multiple times. The accumulator operation is associative, you can create new accumulator types by implementing `AccumulatorV2[InputType, ValueType]` and provide `reset` (sets the initial value in the accumulator), `copy` (returns a copy of the accumulator with the same value), `isZero` (is initial value), `value` (returns the value), `merge` (merges two accumulatos) and `add` (adds two accumulators) methods. The input and value types are different because the value method can perform complex computations and return a different value.
+
+### Reusing RDDs
+The typical use case for reusing an RDD is using it multiple times, performing multiple actions in the same RDD and long chain of expensive transformations. 
+
+    * Iterative computations: For transformations that uses the same parent RDD multiple times, persisting the RDD would keep it loaded in memory, speeding up the computations.
+    * Multiple actions on the same RDD: Each action on an RDD launches its own spark job, so the lineage would be calculated again for each job. We can avoid this by persisting the RDD.
+    * If the cost of computing each partition is very high: Storing the intermediate results can reduce the cost of failures. Checkpointing and persisting breaks the computation lineage, so each of the task to recompute will be smaller
+    
+Persisting in memory is done in the executor JVM is expensive (it has to serialize de-serialize the objects), persisting in disk (like in checkopointing) is also a expensive read and write operation, checkpointing rarely yields performance improvements. Checkpointing prevents transformations with narrow dependencies to be combined in a single task.
+
+#### Persisting and cache
+This means materializing the RDD by storing it in memory on the executors to be used during the current job. There is 5 properties that controls each storage options passed to the `persist(StorageLevel)`. Calling `cache` is the same as calling `persist()` which uses the default MEMORY_ONLY:
+
+    * useDisk: The partitions that doesn't fit in memory are stored in Disk, all options that contains DISK activates this flag.
+    * useMemory:The RDD will be stored in memory or be directly written to disk (only DISK_ONLY sets this flag to false).
+    * useOfHeap: The RDD will be stored outside the executor. 
+    * deserialized: The RDD will be stored as deserialized java objects. This is activated with options that contains _SER like MEMORY_ONLY_SER.
+    * replication: Integer that controls the number of copies persisted into the cluster (defaults to 1). Options that ends in 2 like DISK_ONLY_2 stores two copies of the data.
+    
+#### Checkpointing
+Writes the RDD to an external storage system, but as opposite to `persist()`, it forgets the lineage of the RDD. The recommendation is to use persist when jobs are slow and checkpoint when jobs are failing. To call `checkpoint` call `setCheckpointDir(directory:String)` from the spark context, then call `checkpoint()` on the RDD.
+
+#### LRU caching
+RDDs that are stored in memory or disk remains there for the duration of the spark application until `unpersist()` is called on the RDD or it is evicted due to memory shortage (spark uses Least Recently Used).
+Spark writes shuffle files which usually contains all of the records in each input partition sorted by the mapper and usually remains there in the executor local directory for the duration of the application (which might be used to avoid recomputing some RDDs), the files are cleaned up when the RDD they represent is garbage collected.
+
+#### Noisy cluster considerations
+The clusters with a high volume of unpredictable traffic (called noisy clusters) are particularly suitable for checkpointing and multiple storage copies, this is particularly true for expensive wide transformations. Spark uses FIFO to queue jobs, but this can be changed to a fair scheduler which uses round robin to allocate resources to jobs. It is also possible to configure pools with different weights to allocate resources. Caching does not prevent accumulators to double count a value if the RDD has to be recomputed as the executor might fail entirely.
+
+## Chapter 6: Working with Key/Value data<a name="Chapter6"></a>

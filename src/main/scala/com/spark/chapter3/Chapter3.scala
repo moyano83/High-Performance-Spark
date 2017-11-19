@@ -1,6 +1,6 @@
 package com.spark.chapter3
 
-import com.spark.chapter3.example.model.{PandaPlace, RawPanda}
+import com.spark.model.{PandaPlace, RawPanda}
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 import org.apache.spark.sql.catalyst.expressions.aggregate._
@@ -8,7 +8,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions._
 import org.apache.spark.sql.types._
 
-object Example1 {
+object Chapter3 {
 
   def main(args:Array[String]):Unit = {
     val session = SparkSession.builder().master("local[1]").enableHiveSupport().getOrCreate()
@@ -32,7 +32,6 @@ object Example1 {
     pandaInfo.select(pandaInfo("attributes")(0) / pandaInfo("attributes")(1)).as("squishyness")
     Window.orderBy(pandaInfo("id")).partitionBy("pt").rangeBetween(-10,10)
 
-    df.select("pandas").
   }
 
   def encodePandaType(pandaInfo:DataFrame): Unit ={
@@ -41,8 +40,14 @@ object Example1 {
       .otherwise(2)).as("encodedType"))
   }
 
-  def minMeanSizePerZip(df:DataFrame):DataFrame = {
+  def minMeanSizePerZip(df:DataFrame, sparkSession: SparkSession):DataFrame = {
+    import sparkSession.implicits._
     df.groupBy("pandas").agg(min(df("id")), mean(df("attributes")))
+  }
+
+  def maxPandaSizePerZip(ds:Dataset[RawPanda], sparkSession: SparkSession): Dataset[(String, Double)] = {
+    import sparkSession.implicits._
+    ds.groupByKey(_.zip).agg(max("size").as[Double])
   }
 
 
@@ -57,8 +62,5 @@ object Example1 {
         StructField("attributes", ArrayType(DoubleType, false), false))), false)))
   }
 
-  def maxPandaSizePerZip(ds:Dataset[RawPanda]): Dataset[(String, Double)] = {
-    ds.groupByKey(_.zip).agg(max("size").as[Double])
-  }
 }
 
