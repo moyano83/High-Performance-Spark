@@ -40,7 +40,7 @@ Spark uses 5 main properties to represent an RDD, corresponding to the following
     * iterator(p, parentIters): computes the elements of partition p, given iterators for each of its parent partitions. Not intended to be called by the end user
     * dependencies(): Returns a sequence of dependency objects, which are used by the scheduler to know how this RDD depends on other RDDs.
     * partitioner(): Returns an option with the partitioner object if the RDD has a function between element and partition associated to it.
-    * preferredLocations(p): Retunrs information about the data locality of a partition p. For example if the RDD represents an HDFS file, it returns the list of the nodes where the data is stored.
+    * preferredLocations(p): Returns information about the data locality of a partition p. For example if the RDD represents an HDFS file, it returns the list of the nodes where the data is stored.
     
 The RDD api defines common functions like `map()` and `collect`. Functions that are present only in certain types of RDD are defined in several classes, and are made available using implicit conversions from the abstract RDD class. You can use `toDebugString` method to find the specific RDD type and will provide a list of parent RDDs.
 An RDD has two type of functions defined on it: actions (returns something that is not an RDD )and transformations (returns a new RDD). Every Spark program must have an action that forces the evaluation of the lazy computations. Examples of actions are `saveAsTextFile`, `foreach`...
@@ -71,7 +71,7 @@ The edges of the spark execution graph are based on the dependencies between the
 A Stage corresponds to a shuffle dependency on a wide transformation in a Spark program. A Stage is the set of computations that can be computed in an executor without the need of communication with other executors or the driver program. As the stages boundaries requires communication with the driver program, the stages associated with a job are usually executed sequentially (or in parallel if they compute something in different RDDs combined in a downstream transformation like `join`).
 
 ###### Tasks
-Is the smallest unit of execution representing a local computation. One task can't be executed in more than one executor. the number of tasks per stage corresponds to the number of partitions in the output RDD on that stage. Spark can't run more tasks in parallel than the number of executor cores allocated for the application.
+Is the smallest unit of execution representing a local computation. One task can't be executed in more than one executor. The number of tasks per stage corresponds to the number of partitions in the output RDD on that stage. Spark can't run more tasks in parallel than the number of executor cores allocated for the application.
 
 
 ## Chapter 3: DataFrames, Datasets, and SparkSQL<a name="Chapter3"></a>
@@ -84,7 +84,7 @@ SparkSession is the entry point for an SparkSQL application, we can get a new se
 SparkSQL can infer schemas on loading, print it (`.printSchema()`), but it is also possible to create the schema programmatically using `StructType`.
 
 #### DataFrame API
-You don't need to register temporary tables to work with dataframes. Transformations in Dataframes uses restricted syntax expressions that the optimizer is able to inspect. Dataframes acceps SparkSQL expressions instead of lambdas, columns are accessed with the `apply` function. Dataframes provide operators defined on the column class like `and` to act in more than one column: `df.filter(df("column").and(df("column2") > 0))`. There is a lot of functions defined in the package `org.apache.spark.sql.functions`. `coalesce(col1, col2,...)` returns the first non null column, `nanv1(col1, col2,...)` returns the first non-Nan value. `na` helps handle missing data. Other useful options are `dropDuplicates()` which can drop also duplicates based on a subset of the columns.
+You don't need to register temporary tables to work with dataframes. Transformations in Dataframes uses restricted syntax expressions that the optimizer is able to inspect. Dataframes accepts SparkSQL expressions instead of lambdas, columns are accessed with the `apply` function. Dataframes provide operators defined on the column class like `and` to act in more than one column: `df.filter(df("column").and(df("column2") > 0))`. There is a lot of functions defined in the package `org.apache.spark.sql.functions`. `coalesce(col1, col2,...)` returns the first non null column, `nanv1(col1, col2,...)` returns the first non-Nan value. `na` helps handle missing data. Other useful options are `dropDuplicates()` which can drop also duplicates based on a subset of the columns.
 The `groupBy` function returns an special object `Dataset` which can be of type `GroupedDataset`, `KeyValueGroupedDataset` and `RelationalGroupedDataset`. the `GroupedDataset` has functionality like `min`, `max`, `avg` and `sum`. We can collect basic stats on a `Dataframe` calling the `describe` method on it, which computes `count`, `mean`, `stdev` and more. To compute more complex aggregations use the `agg` API, which accepts a list of aggregate expressions, a String representing the aggregation or a map of column names to aggregate function names.
 Windows can also be defined to compute over ranges, you need to specify the rows the window is over, the order of the rows within the window, and the size of the window. Dataframes support sorting, limit the number of results. MultiDataFrame operations are supported `unionAll`, `intersec`, `except`, `distinct`.
 If Spark is connected to a Hive metastore, it is possible to run SQL queries `SQLContext.sql(<the query>)`, it is also possible to run queries over parquet files like `SQLContext.sql("Select * from parquet.<path_to_parquet_file>")`.
@@ -110,7 +110,7 @@ In Spark Core, to save an RDD the directory should not exists, with Spark SQL yo
     * Overwrite: Substitute the data
     * Ignore: Silently skip writting if the target exists.
     
-For example `df.write.mode(SaveMode.Append).save("outputPath/")`. If you know how consumers would read your data it is beneficial to partition it based on that. When reading partitioned data you point spark to the root directory and it will automatically discover the partitions (only string and numerics can be used as partition keys). Use the `partitionBy(col1, col2,...)` function of `DataFrame`:
+For example `df.write.mode(SaveMode.Append).save("outputPath/")`. If you know how consumers would read your data it is beneficial to partition it based on that. When reading partitioned data you point spark to the root directory and it will automatically discover the partitions (only string and numeric can be used as partition keys). Use the `partitionBy(col1, col2,...)` function of `DataFrame`:
 `df.write.partitionBy("column1").format("json").save("output/")`.
 
 #### Datasets
@@ -126,7 +126,7 @@ To use a UDF you have to register it first like this `sqlContext.udf.register("s
 Catalyst is the SparkSQL query optimizer, which takes the query plan and transform it into an execution Plan. Using techniques like pattern matching, the optimizer builds a physical plan based on rule-based and cost-based optimizations. Spark might also use code generation using the _Janino_ library. For very large query plans the optimizer might run into problems, that can be solved by converting the `DataFrame`/`Dataset` to an `RDD`, cache it perform the iterative operations and convert the `RDD` back.
 
 #### JDBC/ODBC Server
-SparkSQL a JDBC server to allow access to external systems to its resources. This JDBC server is based on the HiveServer2. To start and stop this server from the command line use: `./sbin/start-thriftserver.sh` and `./sbin/stop-thriftserver.sh`. You can set config parameters using `--hiveconf <key=value>`. To Start it programmatically you can create the server with `HiveTriftServer2.startWithContext(hiveContext)`.
+SparkSQL has a JDBC server to allow access to external systems to its resources. This JDBC server is based on the HiveServer2. To start and stop this server from the command line use: `./sbin/start-thriftserver.sh` and `./sbin/stop-thriftserver.sh`. You can set config parameters using `--hiveconf <key=value>`. To Start it programmatically you can create the server with `HiveTriftServer2.startWithContext(hiveContext)`.
 
 
 ## Chapter 4: Joins (SQL and Core)<a name="Chapter4"></a>
@@ -201,7 +201,7 @@ Broadcast variables are written on the driver and a copy of it is sent to each m
     sc.broadcast(theVariable) //Set variable
     rdd.filter(x => x== theVariable.value) //theVariable is a wrapper, to get the value call the value method
 ```
-If a setup can be serialized, a broadcast variable with `transient lazy val` modifiers can be used. Use `unpersist` to remove explicity a broadcasted variable.
+If a setup can be serialized, a broadcast variable with `transient lazy val` modifiers can be used. Use `unpersist` to remove explicitly a broadcasted variable.
 Accumulators are used to collect by-product information from an action (computation) and then bring the result to the driver. If the computation takes times multiple times then the accumulator would also be update multiple times. The accumulator operation is associative, you can create new accumulator types by implementing `AccumulatorV2[InputType, ValueType]` and provide `reset` (sets the initial value in the accumulator), `copy` (returns a copy of the accumulator with the same value), `isZero` (is initial value), `value` (returns the value), `merge` (merges two accumulatos) and `add` (adds two accumulators) methods. The input and value types are different because the value method can perform complex computations and return a different value.
 
 ### Reusing RDDs
@@ -211,14 +211,14 @@ The typical use case for reusing an RDD is using it multiple times, performing m
     * Multiple actions on the same RDD: Each action on an RDD launches its own spark job, so the lineage would be calculated again for each job. We can avoid this by persisting the RDD.
     * If the cost of computing each partition is very high: Storing the intermediate results can reduce the cost of failures. Checkpointing and persisting breaks the computation lineage, so each of the task to recompute will be smaller
     
-Persisting in memory is done in the executor JVM is expensive (it has to serialize de-serialize the objects), persisting in disk (like in checkopointing) is also a expensive read and write operation, checkpointing rarely yields performance improvements. Checkpointing prevents transformations with narrow dependencies to be combined in a single task.
+Persisting in memory is done in the executor JVM is expensive (it has to serialize de-serialize the objects), persisting in disk (like in checkpointing) is also a expensive read and write operation, checkpointing rarely yields performance improvements and prevents transformations with narrow dependencies to be combined in a single task.
 
 #### Persisting and cache
 This means materializing the RDD by storing it in memory on the executors to be used during the current job. There is 5 properties that controls each storage options passed to the `persist(StorageLevel)`. Calling `cache` is the same as calling `persist()` which uses the default MEMORY_ONLY:
 
     * useDisk: The partitions that doesn't fit in memory are stored in Disk, all options that contains DISK activates this flag.
     * useMemory:The RDD will be stored in memory or be directly written to disk (only DISK_ONLY sets this flag to false).
-    * useOfHeap: The RDD will be stored outside the executor. 
+    * useOfHeap: The RDD will be stored outside the executor (for example in S3). 
     * deserialized: The RDD will be stored as deserialized java objects. This is activated with options that contains _SER like MEMORY_ONLY_SER.
     * replication: Integer that controls the number of copies persisted into the cluster (defaults to 1). Options that ends in 2 like DISK_ONLY_2 stores two copies of the data.
     
