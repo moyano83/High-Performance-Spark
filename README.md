@@ -7,6 +7,7 @@
 4. [Chapter 4: Joins (SQL and Core)](#Chapter4)
 5. [Chapter 5: Effective Transformations](#Chapter5)
 6. [Chapter 6: Working with Key/Value data](#Chapter6)
+7. [Chapter 7: Going Beyond Scala](#Chapter7)
 
 ## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
 Skipped.
@@ -78,10 +79,10 @@ Is the smallest unit of execution representing a local computation. One task can
 `Datasets` are like RDD with additional schema information used to provide more efficient storage and optimization. `DataFrames` are like `Datasets` of special `Row[T]` objects.
 
 #### Getting Started with the SparkSession (Or HiveContext or SQLContext)
-SparkSession is the entry point for an SparkSQL application, we can get a new session (or an existing one if it exists) calling `SparkSession.getBuilder().getOrCreate()`, calling `enableHiveSupport()` (which is a shortcut for `config(key,value)`)will configure the classpath to use Hive. Prior to Spark 2.0 we had to use `HiveContext` and `SQLContext`, `HiveContext` is preferred as it has better parser and UDF support. To enable Hive support you need both _spark-sql_ and _spark-hive_ dependencies. The SparkSession supports JSON format, it can be loaded using `session.read.json(path)`.
+SparkSession is the entry point for an SparkSQL application, we can get a new session (or an existing one if it exists) calling `SparkSession.getBuilder().getOrCreate()`, calling `enableHiveSupport()` (which is a shortcut for `config(key,value)`) will configure the classpath to use Hive. Prior to Spark 2.0 we had to use `HiveContext` and `SQLContext`, `HiveContext` is preferred as it has better parser and UDF support. To enable Hive support you need both _spark-sql_ and _spark-hive_ dependencies. The SparkSession supports JSON format, it can be loaded using `session.read.json(path)`.
 
 #### Basic of Schemas
-SparkSQL can infer schemas on loading, print it (`.printSchema()`), but it is also possible to create the schema programmatically using `StructType`.
+SparkSQL can infer schemas on loading, print it (`dataframe.printSchema()`), but it is also possible to create the schema programmatically using `StructType`.
 
 #### DataFrame API
 You don't need to register temporary tables to work with dataframes. Transformations in Dataframes uses restricted syntax expressions that the optimizer is able to inspect. Dataframes accepts SparkSQL expressions instead of lambdas, columns are accessed with the `apply` function. Dataframes provide operators defined on the column class like `and` to act in more than one column: `df.filter(df("column").and(df("column2") > 0))`. There is a lot of functions defined in the package `org.apache.spark.sql.functions`. `coalesce(col1, col2,...)` returns the first non null column, `nanv1(col1, col2,...)` returns the first non-Nan value. `na` helps handle missing data. Other useful options are `dropDuplicates()` which can drop also duplicates based on a subset of the columns.
@@ -96,7 +97,7 @@ If Spark is connected to a Hive metastore, it is possible to run SQL queries `SQ
 Spark supports multiple direct loading formats like: 
     
     * JSON: Infers schema loading a sample of the data, this operation it's costly
-    * JDBC: Represent a natural SQL source. Specific jars needs to be in the classpath, but sparks uses an abstraction `JdbcDialects` to speak with the different vendors. The `save()` method does not required a path at the information is already available.
+    * JDBC: Represent a natural SQL source. Specific jars needs to be in the classpath, but sparks uses an abstraction `JdbcDialects` to speak with the different vendors. The `save()` method does not require a path as the information about the table is already available.
     * Parquet: Parquet provides space-efficiency, ability to split across multiple files, compression, nested types... We can load a parquet file by calling `df.format("parquet").load(path)`. 
     * Hive Tables: If hive is configured, we can load tables with `session.read.table("myTable")` and save results to a table with `df.write.saveAsTable("myTable")`.
     * RDDs: Can be converted to dataframes by providing a StructType with the schema definition. DataFrames can be converted to RDDs of Row objects (by calling the `.rdd` method).
@@ -171,7 +172,7 @@ Coalesce is a narrow dependency if it reduces the number of partitions (does not
 
 #### What type of RDD does your transformation return?
 Performance in RDD operations is dependant both on the data type contained in each record and in the underlying RDD type (some RDD stores information about the ordering or locality of the data from previous transformations). 
-Preserving the RDD type is important because many transformations are only defined on RDDs of a particular type (max, min and sum can only be performed on numbers). One of the techniques to use to preserve the type is to define subroutines with input and output types defined. The type can be lost when working with `DataFrame` as `RDD` as in this transformation the schema is thrown away(althought you can store the schema in a variable to apply it after).
+Preserving the RDD type is important because many transformations are only defined on RDDs of a particular type (max, min and sum can only be performed on numbers). One of the techniques to use to preserve the type is to define subroutines with input and output types defined. The type can be lost when working with `DataFrame` as `RDD` as in this transformation the schema is thrown away(although you can store the schema in a variable to apply it after).
 
 #### Minimizing object creation
 There are techniques to reduce the amount of objects created (an hence minimizing GC) like reusing existing objects or using smaller data structures. An example of object reuse is through the scala `this.type` in accumulator objects (although is preferably not to use mutable state in Spark or Scala):
@@ -195,14 +196,16 @@ Transformations using iterators allows Spark to spill data to disk selectively a
 RDDs differs on the mathematical sets in the way it handles duplicates, for example union combines the arguments thus the `union` operation size will be the sum of the two RDDs size. `intersection` and `substract` results can be unexpected as the RDDs might contain duplicates.
 
 #### Reducing Setup Overhead
-For set up operations like open a DB connection, it is recommended to do the setup at the map partition, and then the transformations using the iterator functions. Spark has two type of shared variables, broadcast variables (written in driver) and accumulators (written in workers).
-Broadcast variables are written on the driver and a copy of it is sent to each machine (not one per task) for example a small table or a prediction model:
+To set up operations like open a DB connection, it is recommended to do the setup at the map partition, and then the 
+transformations using the iterator functions. Spark has two type of shared variables, broadcast variables (written in driver) and accumulators (written in workers). Broadcast variables are written on the driver and a copy of it is sent to each machine (not one per task) for example a small table or a prediction model:
+
 ```scala
     sc.broadcast(theVariable) //Set variable
     rdd.filter(x => x== theVariable.value) //theVariable is a wrapper, to get the value call the value method
 ```
+
 If a setup can be serialized, a broadcast variable with `transient lazy val` modifiers can be used. Use `unpersist` to remove explicitly a broadcasted variable.
-Accumulators are used to collect by-product information from an action (computation) and then bring the result to the driver. If the computation takes times multiple times then the accumulator would also be update multiple times. The accumulator operation is associative, you can create new accumulator types by implementing `AccumulatorV2[InputType, ValueType]` and provide `reset` (sets the initial value in the accumulator), `copy` (returns a copy of the accumulator with the same value), `isZero` (is initial value), `value` (returns the value), `merge` (merges two accumulatos) and `add` (adds two accumulators) methods. The input and value types are different because the value method can perform complex computations and return a different value.
+Accumulators are used to collect by-product information from an action (computation) and then bring the result to the driver. If the computation takes place  multiple times then the accumulator would also be updated multiple times. The accumulator operation is associative, you can create new accumulator types by implementing `AccumulatorV2[InputType, ValueType]` and provide `reset` (sets the initial value in the accumulator), `copy` (returns a copy of the accumulator with the same value), `isZero` (is initial value), `value` (returns the value), `merge` (merges two accumulators) and `add` (adds two accumulators) methods. The input and value types are different because the value method can perform complex computations and return a different value.
 
 ### Reusing RDDs
 The typical use case for reusing an RDD is using it multiple times, performing multiple actions in the same RDD and long chain of expensive transformations. 
@@ -217,7 +220,7 @@ Persisting in memory is done in the executor JVM is expensive (it has to seriali
 This means materializing the RDD by storing it in memory on the executors to be used during the current job. There is 5 properties that controls each storage options passed to the `persist(StorageLevel)`. Calling `cache` is the same as calling `persist()` which uses the default MEMORY_ONLY:
 
     * useDisk: The partitions that doesn't fit in memory are stored in Disk, all options that contains DISK activates this flag.
-    * useMemory:The RDD will be stored in memory or be directly written to disk (only DISK_ONLY sets this flag to false).
+    * useMemory:The RDD will be stored in memory or will be written to disk (only DISK_ONLY sets this flag to false).
     * useOfHeap: The RDD will be stored outside the executor (for example in S3). 
     * deserialized: The RDD will be stored as deserialized java objects. This is activated with options that contains _SER like MEMORY_ONLY_SER.
     * replication: Integer that controls the number of copies persisted into the cluster (defaults to 1). Options that ends in 2 like DISK_ONLY_2 stores two copies of the data.
@@ -233,3 +236,90 @@ Spark writes shuffle files which usually contains all of the records in each inp
 The clusters with a high volume of unpredictable traffic (called noisy clusters) are particularly suitable for checkpointing and multiple storage copies, this is particularly true for expensive wide transformations. Spark uses FIFO to queue jobs, but this can be changed to a fair scheduler which uses round robin to allocate resources to jobs. It is also possible to configure pools with different weights to allocate resources. Caching does not prevent accumulators to double count a value if the RDD has to be recomputed as the executor might fail entirely.
 
 ## Chapter 6: Working with Key/Value data<a name="Chapter6"></a>
+Spark has its own PairRDDFunctions class containing operations defined on RDDs of tuples. The Order edRDDFunctions class contains the methods for sorting. Operations on key/value pairs can cause:
+
+    * Out-of-memory errors in the driver or executor nodes
+    * Shuffle failures
+    * “Straggler tasks” or partitions, which are especially slow to compute
+    
+### Actions on Key/Value Pairs
+One way to minimize the number of shuffles in a computation that requires several transformations is to make sure to preserve partitioning across narrow transformations to avoid reshuffling data. Also, by using wide transformations such as reduceByKey and aggregateByKey that can preform map-side reductions and that do not require loading all the records for one key into memory, you can prevent memory errors on the executors and speed up wide transformations, particularly for aggregation operations.
+To use the functions available in PairRDD and OrderedRDD types, the keys should have an implicit ordering defined, Spark uses implicit conversion to convert an RDD that meets the PairRDD or OrderedRDD requirements from a generic type to the PairRDD or OrderedRDD type. This implicit conversion requires that the correct library already be imported. Thus, to use Spark’s pairRDDFunctions, you need to have imported the SparkContext.
+Actions might return unbounded data to the driver (like in `countByKey`, `countByValue`, `lookUp`, and 
+`collectAsMap`) thus it can cause memory issues.
+Example of using `groupByKey` to calculate ranked statistics over a group of columns: 
+
+```scala
+def findRankStatistics(dataFrame: DataFrame,ranks: List[Long]): Map[Int, Iterable[Double]] = {
+require(ranks.forall(_ > 0))
+//Map to column index, value pairs
+val pairRDD: RDD[(Int, Double)] = mapToKeyValuePairs(dataFrame)
+val groupColumns: RDD[(Int, Iterable[Double])] = pairRDD.groupByKey() groupColumns.mapValues(iter => {
+//convert to an array and sort
+iter.toArray.sorted.toIterable.zipWithIndex.flatMap({ case (colValue, index) =>
+  if (ranks.contains(index + 1)) Iterator(colValue)
+  else Iterator.empty
+      })
+  }).collectAsMap()
+}
+```
+### Choosing an Aggregation Operation
+In general it is better to choose aggregation operations that can do some map-side reduction to decrease the number of records by key before shuffling (e.g., aggregate ByKey or reduceByKey). If the accumulator grows in size with the combine operation, then the operation is likely to fail with a memory error (if the accumulator is the size of all the data for that key).
+
+    * groupByKey: Can run out of memory if a given key has too many values for it. Requires a suffle if the partitioner is not known
+    * combineByKey: Combines values with the same key using a different return type. Can run out of memory if the combine routine uses too much memory or garbage collector overhead, or the accumulator for one key becomes too large.
+    * aggregateByKey: Similar to the combine, faster than combineByKey since it will perform the merging map- side before sending to a combiner
+    * reduceByKey: Combines values with the same key, values has to be of the same type. Similar restrictions than the aggregateByKey
+    * foldByKey: Combine values with Key the same key using an associative combine function and a zero value, which can be added to the result an arbitrary number of times. Similar restrictions than the reduceByKey.
+
+### Multiple RDD Operations
+#### Co-Grouping
+ All of the join operations are implemented using the `cogroup` function, which uses the CoGroupedRDD type. A CoGroupedRDD is created from a sequence of key/value RDDs, each with the same key type. `cogroup` shuffles each of the RDDs so that the items with the same value from each of the RDDs will end up on the same partition and into a single RDD by key. `cogroup` requires that all the records in all of the co-grouped RDDs for one key be able to fit on one partition. `cogroup` can be useful as an alternative to join when joining with multiple RDDs. Rather than doing joins on multiple RDDs with one RDD it is more performant to copartition the RDDs since that will prevent Spark from shuffling the RDD being repeatedly joined.
+
+#### Partitioners and Key/Value Data
+An RDD without a known partitioner will assign data to partitions according only to the data size and partition size. For RDDs of a generic record type, repartition and coalesce can be used to simply change the number of partitions that the RDD uses, irrespective of the value of the records in the RDD. Repartition shuffles the RDD with a hash partitioner and the given number of partitions, coalesce is a special repartition that avoids a full shuffle if the desired number of partitions is less than the current number of partitions (if is more then is a repartition with hash). For RDDs of key/value pairs, we can use a function called partitionBy, which takes a partition object rather than a number of partitions and shuffles the RDD with the new partitioner.
+
+#### Using the Spark Partitioner Object
+ A partitioner is actually an interface with two methods: numPartitions(number of partitions in the RDD after partitioning it) and getPartition (mapping from a key to the integer index of the partition where the record should be send). Two implementations are provided:
+ 
+     * Hash partitioner: The default one for pair RDD operations (not ordered), defines the partition based on the of the key.
+     * Range partitioner: Assigns records whose keys are in the same range to a given partition. Range partitioning is required for sorting since it ensures that by sorting records within a given partition, the entire RDD will be sorted. Creating a RangePartitioner with Spark requires not only a number of partitions, but also the actual RDD to sample in order to determine the appropriate ranges to use (breaking the graph), therefore it is both an action and a transformation.
+     * Custom Partitioning: To define a custom partitioning, the following methods needs to be implemented:
+       - numPartitions: Returns the number of partitions (greater than 0)
+       - getPartition: Method that returns the partition index for a given key
+       - equals: An optional method to define equality between partitioners, important to avoid unnecesary suffles if the RDD has used the same partitioner.
+       - hashcode: Required if the equals method has been overriden.
+
+### Preserving Partitioning Information Across Transformations
+Unless a transformation is known to only change the value part of the key/value pair in Spark, the resulting RDD will not have a known partitioner. Common transformations like `map` of `flatMap` can change the key, and even if the function doesn't change it, the result won't have a known partitioner. `mapValues` changes only the values and preserves the partitioner. The mapPartitions function will also preserve the partition if the preserves Partitioning flag is set to true.
+
+#### Leveraging Co-Located and Co-Partitioned RDDs
+Co-located RDDs are RDDs with the same partitioner that reside in the same physical location in memory. RDDs can only be combined without any network transfer if they have the same partitioner and if each of the corresponding partitions in-memory are on the same executor. 
+We say that multiple RDDs are co-partitioned if they are partitioned by the same known partitioner. RDDs will be co-partitioned if their partitioner objects are equal, but if the corresponding partitions for each RDD are not in the same physical location.
+
+#### Dictionary of Mapping and Partitioning Functions PairRDDFunctions
+    
+    * mapValues:Preserves the partitioning of the data for use in future operations. If the input RDD has a known partitioner, the output RDD will have the same partitioner.
+    * flatMapValues: Preserves partitioner associated with the input RDD. However, the distribution of duplicate values in the keys may change
+    * keys: Returns an RDD with the keys preserving the partitioner.
+    * values: Returns an RDD with the values, does not preserve partitioning. Future wide transformations will cause a shuffle even if they have the same partitioner as the input RDD.
+    * sampleByKey: Given a map from the keys to the percent of each key to sample, returns a stratified sample of the input RDD, preserving the partitioning of the input data.
+    * partitionBy: Takes a partitioner object and partitions the RDD accordingly, it always causes a shuffle.
+    
+#### Dictionary of OrderedRDDOperations
+
+    * sortByKey: Return an RDD sorted by the key, the default number of partitions is the same as the input RDD.
+    * partitionAndSortWithinPartitions: Takes a partitioner and an implicit ordering. Partitions the RDD according to the partitioner and then sorts all the records on each partition according to the implicit ordering. The output partitioner is the same as the partitioner argument.
+    * filterByRange: Takes a lower and an upper bound for the keys and returns an RDD of just the records whose key falls in that range, preserving the partitioner. When the RDD has already been partitioned by a range partitioner this is cheaper than a generic filter because it scans only the partitions whose keys are in the desired range.
+    
+#### Sorting by Two Keys with SortByKey
+Spark’s sortByKey does allow sorting by tuples of keys for tuples with two elements like in `indexValuePairs.map((_, null)).sortByKey()`, comparing the first value of the tuple and then the second. 
+
+### Secondary Sort and repartitionAndSortWithinPartitions
+Using secondary sort in spark is faster than partitioning and then sorting, the repartitionAndSortWithinPartitions function is a wide transformation that takes a partitioner defined on the argument RDD—and an implicit ordering, which must be defined on the keys of the RDD.
+`groupByKey` does not maintain the order of the values within the groups. Spark sorting is also not guaranteed to be stable (preserve the original order of elements with the same value). Repeated sorting is not a viable option:` indexValuePairs.sortByKey.map(_.swap()).sortByKey`
+
+### Straggler Detection and Unbalanced Data
+_Stragglers_ are those tasks within a stage that take much longer to execute than the other tasks in that stage. When wide transformations are called on the same RDD, stages must usually be executed in sequence, so straggler tasks may hold up an entire job. 
+
+## Chapter 7: Going Beyond Scala<a name="Chapter7"></a>

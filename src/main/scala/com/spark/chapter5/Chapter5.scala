@@ -5,13 +5,13 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 object Chapter5 extends App{
-  override protected def main(args: Array[String]): Unit = {
-
-  }
 
   def computeTotalFuzzyness(sc:SparkContext, rdd:RDD[RawPanda]):(RDD[(String, Long)], Double) = {
     val acc = sc.doubleAccumulator("fuzzyness")
-    val transformed = rdd.map{p => acc.add(p.attributes(0)); (p.zip, p.id)}
+    val transformed = rdd.map{p => acc.add(
+      p.attributes(0))
+      (p.zip, p.id)
+    }
     transformed.count()
     (transformed, acc.value)
   }
