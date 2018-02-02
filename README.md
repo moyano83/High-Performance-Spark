@@ -8,6 +8,7 @@
 5. [Chapter 5: Effective Transformations](#Chapter5)
 6. [Chapter 6: Working with Key/Value data](#Chapter6)
 7. [Chapter 7: Going Beyond Scala](#Chapter7)
+8. [Chapter 8: Testing and Validation](#Chapter8)
 
 ## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
 Skipped.
@@ -236,14 +237,14 @@ Spark writes shuffle files which usually contains all of the records in each inp
 The clusters with a high volume of unpredictable traffic (called noisy clusters) are particularly suitable for checkpointing and multiple storage copies, this is particularly true for expensive wide transformations. Spark uses FIFO to queue jobs, but this can be changed to a fair scheduler which uses round robin to allocate resources to jobs. It is also possible to configure pools with different weights to allocate resources. Caching does not prevent accumulators to double count a value if the RDD has to be recomputed as the executor might fail entirely.
 
 ## Chapter 6: Working with Key/Value data<a name="Chapter6"></a>
-Spark has its own PairRDDFunctions class containing operations defined on RDDs of tuples. The Order edRDDFunctions class contains the methods for sorting. Operations on key/value pairs can cause:
+Spark has its own PairRDDFunctions class containing operations defined on RDDs of tuples. The OrderedRDDFunctions class contains the methods for sorting. Operations on key/value pairs can cause:
 
     * Out-of-memory errors in the driver or executor nodes
     * Shuffle failures
     * “Straggler tasks” or partitions, which are especially slow to compute
     
 ### Actions on Key/Value Pairs
-One way to minimize the number of shuffles in a computation that requires several transformations is to make sure to preserve partitioning across narrow transformations to avoid reshuffling data. Also, by using wide transformations such as reduceByKey and aggregateByKey that can preform map-side reductions and that do not require loading all the records for one key into memory, you can prevent memory errors on the executors and speed up wide transformations, particularly for aggregation operations.
+One way to minimize the number of shuffles in a computation that requires several transformations is to make sure to preserve partitioning across narrow transformations to avoid reshuffling data. Also, by using wide transformations such as reduceByKey and aggregateByKey that can perform map-side reductions and that do not require loading all the records for one key into memory, you can prevent memory errors on the executors and speed up wide transformations, particularly for aggregation operations.
 To use the functions available in PairRDD and OrderedRDD types, the keys should have an implicit ordering defined, Spark uses implicit conversion to convert an RDD that meets the PairRDD or OrderedRDD requirements from a generic type to the PairRDD or OrderedRDD type. This implicit conversion requires that the correct library already be imported. Thus, to use Spark’s pairRDDFunctions, you need to have imported the SparkContext.
 Actions might return unbounded data to the driver (like in `countByKey`, `countByValue`, `lookUp`, and 
 `collectAsMap`) thus it can cause memory issues.
@@ -254,11 +255,12 @@ def findRankStatistics(dataFrame: DataFrame,ranks: List[Long]): Map[Int, Iterabl
 require(ranks.forall(_ > 0))
 //Map to column index, value pairs
 val pairRDD: RDD[(Int, Double)] = mapToKeyValuePairs(dataFrame)
-val groupColumns: RDD[(Int, Iterable[Double])] = pairRDD.groupByKey() groupColumns.mapValues(iter => {
+val groupColumns: RDD[(Int, Iterable[Double])] = pairRDD.groupByKey()
+groupColumns.mapValues(iter => {
 //convert to an array and sort
-iter.toArray.sorted.toIterable.zipWithIndex.flatMap({ case (colValue, index) =>
-  if (ranks.contains(index + 1)) Iterator(colValue)
-  else Iterator.empty
+  iter.toArray.sorted.toIterable.zipWithIndex.flatMap({ case (colValue, index) =>
+    if (ranks.contains(index + 1)) Iterator(colValue)
+    else Iterator.empty
       })
   }).collectAsMap()
 }
@@ -268,7 +270,7 @@ In general it is better to choose aggregation operations that can do some map-si
 
     * groupByKey: Can run out of memory if a given key has too many values for it. Requires a suffle if the partitioner is not known
     * combineByKey: Combines values with the same key using a different return type. Can run out of memory if the combine routine uses too much memory or garbage collector overhead, or the accumulator for one key becomes too large.
-    * aggregateByKey: Similar to the combine, faster than combineByKey since it will perform the merging map- side before sending to a combiner
+    * aggregateByKey: Similar to the combine, faster than combineByKey since it will perform the merging map-side before sending to a combiner
     * reduceByKey: Combines values with the same key, values has to be of the same type. Similar restrictions than the aggregateByKey
     * foldByKey: Combine values with Key the same key using an associative combine function and a zero value, which can be added to the result an arbitrary number of times. Similar restrictions than the reduceByKey.
 
@@ -323,3 +325,83 @@ Using secondary sort in spark is faster than partitioning and then sorting, the 
 _Stragglers_ are those tasks within a stage that take much longer to execute than the other tasks in that stage. When wide transformations are called on the same RDD, stages must usually be executed in sequence, so straggler tasks may hold up an entire job. 
 
 ## Chapter 7: Going Beyond Scala<a name="Chapter7"></a>
+Spark supports a range of languages for use on the driver, and an even wider range of languages can be used inside of our transformations on the workers. Generally the non-JVM language binding calls the Java interface for Spark using an RPC mechanism, such as Py4J, passing along a serialized representation of the code to be executed on the worker.
+Since it can sometimes be convoluted to call the Scala API from Java, Spark’s Java APIs are mostly implemented in Scala while hiding class tags and implicit conversions. Converting JavaRDD to ScalaRDD have sense to access some functionality that might only be 
+available in scala.
+
+### Beyond Scala, and Beyond the JVM
+Going outside of the JVM in Spark—especially on the workers—can involve a substantial performance cost of copying data on worker nodes between the JVM and the target language. PySpark connects to JVM Spark using a mixture of pipes on the workers and Py4J, a specialized library for Python/Java interoperability, on the driver. Copying the data from the JVM to Python is done using sockets and pickled bytes, or the most part, Spark Scala treats the results of Python as opaque bytes arrays.
+You can register Java/Scala UDFs and then use them from Python. Starting in Spark 2.1 this can be done with the register JavaFunction utility on the sqlContext.
+
+## Chapter 8: Testing and Validation<a name="Chapter8"></a>
+### Unit testing
+Unit tests are generally faster than integration tests and are frequently used during development, to test the data flow of our Spark job, we will need a SparkContext to create testing RDDs or DStreams with local collections. Try to move individual element operations outside the RDD transformations, to remove the need of the RDD on the test class, avoid anonymous functions inside rdd transformations. A simple way to test transformations is to create a SparkContext, parallelize the input, apply your transformations, and collect the results locally for comparison with the expected value. 
+Add `System.clearProperty("spark.driver.port")` on the cleanup routine of your tests so spark this is done so that if we run many Spark tests in sequence, they will not bind to the same port. This will result in an exception trying to bind to a port that is already in use.
+
+#### Streaming
+Testing Spark Streaming can be done with queueStream which creates input streams like this:
+
+```scala
+def makeSimpleQueueStream(ssc: StreamingContext) = {
+val input = List(List("hi"), List("happy pandas", "sad pandas")).map(sc.parallelize(_))
+val nonCheckpointableInputDsStream = ssc.queueStream(Queue(input:_*))
+}
+```
+
+Create an input stream for the provided input sequence. This is done using TestInputStream as queueStreams are not checkpointable.
+
+```scala
+private[holdenkarau] def createTestInputStream[T: ClassTag]( sc: SparkContext,
+ssc_ : TestStreamingContext,
+input: Seq[Seq[T]]): TestInputStream[T] = {
+new TestInputStream(sc, ssc_, input, numInputPartitions) }
+```
+
+spark-testing-base provides two streaming test base classes: Streaming SuiteBase for transformations and StreamingActionBase for actions.
+
+#### Mocking RDDs
+kontextfrei is a Scala-only library that enables to you to write the business logic and test code of your Spark application without depending on RDDs, but using the same API.
+
+#### Getting Test Data
+Spark has some built-in components for generating random RDDs in the RandomRDDs object in mllib. There are built-in generator functions for exponential, gamma, log‐Normal, normal, poisson, and uniform distributions as both RDDs of doubles and RDDs of vectors. 
+
+```scala
+def generateGoldilocks(sc: SparkContext, rows: Long, numCols: Int): RDD[RawPanda] = {
+val zipRDD = RandomRDDs.exponentialRDD(sc, mean = 1000, size = rows) .map(_.toInt.toString)
+val valuesRDD = RandomRDDs.normalVectorRDD( sc, numRows = rows, numCols = numCols)
+zipRDD.zip(valuesRDD).map{case (z, v) =>RawPanda(1, z, "giant", v(0) > 0.5, v.toArray) }
+}
+```
+
+#### Sampling
+If it’s available as an option to you, sampling your production data can be a great source of test data. Spark’s core RDD and Pair RDD functionality both support customizable random samples. The simplest method for sampling, directly on the RDD class, is the function sample, which takes withReplacement: Boolean, fraction: Double, seed: Long (optional) => `rdd.sample(withReplacement=false, fraction=0.1)`.
+You can directly construct a `PartitionwiseSampleRDD` with your own sampler, provided it implements the `RandomSampler` trait from `org.apache.spark.util.random`. `sampleByKeyExact` and `sampleByKey` take in a map of the percentage for each key to keep allowing you to perform stratified sampling.
+
+```scala
+   // 5% of the red pandas, and 50% of the giant pandas
+val stratas = Map("red" -> 0.05, "giant" -> 0.50)
+rdd.sampleByKey(withReplacement=false, fractions = stratas)
+```
+
+DataFrames also have sample and randomSplit available directly on them. If you want to perform stratified sampling on DataFrames, you must convert them to an RDD first.
+
+#### Property Checking with ScalaCheck
+ScalaCheck is a property-based testing library for Scala similar to Haskell’s Quick‐ Check. Property-based testing allows you to specify invariants about your code (for example, all of the outputs should have the substring “panda”) and lets the testing library generate different types of test input for you. _sscheck_ and _spark-testing-base_, implement generators for Spark.
+
+```scala
+// A trivial property that the map doesn't change the number of elements
+test("map should not change number of elements") { val property =
+  forAll(RDDGenerator.genRDD[String](sc)(Arbitrary.arbitrary[String])) { rdd => rdd.map(_.length).count() == rdd.count()}
+  check(property)
+}
+```
+
+### Integration Testing
+Integration tests can be done in several ways:
+    
+    * Local Mode: Using smaller versions of our data
+    * Docker: Creating a mini cluster using docker containers
+    * Yarn Mini-cluster: Hadoop has built-in testing libraries to set up a local YarnCluster, which can be a lighter-weight alternative to even Docker. 
+
+### Verifying Performance
+You have access to many of the spark counters for verifying performance in the WebUI, and can get programmatic access to them by registering a SparkListener to collect the information. Spark uses callbacks to provide the metrics, and for performance info we can get most of what we need through onTaskEnd, for which Spark gives us a SparkListenerTaskEnd. This Trait defines a method `def onTaskEnd(taskEnd: SparkListenerTaskEnd)` that can be used to collect metrics.
