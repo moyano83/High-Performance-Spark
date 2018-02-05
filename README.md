@@ -9,6 +9,7 @@
 6. [Chapter 6: Working with Key/Value data](#Chapter6)
 7. [Chapter 7: Going Beyond Scala](#Chapter7)
 8. [Chapter 8: Testing and Validation](#Chapter8)
+9. [Chapter 9: Spark MLlib and ML](#Chapter9)
 
 ## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
 Skipped.
@@ -326,12 +327,33 @@ _Stragglers_ are those tasks within a stage that take much longer to execute tha
 
 ## Chapter 7: Going Beyond Scala<a name="Chapter7"></a>
 Spark supports a range of languages for use on the driver, and an even wider range of languages can be used inside of our transformations on the workers. Generally the non-JVM language binding calls the Java interface for Spark using an RPC mechanism, such as Py4J, passing along a serialized representation of the code to be executed on the worker.
-Since it can sometimes be convoluted to call the Scala API from Java, Spark’s Java APIs are mostly implemented in Scala while hiding class tags and implicit conversions. Converting JavaRDD to ScalaRDD have sense to access some functionality that might only be 
-available in scala.
+Since it can sometimes be convoluted to call the Scala API from Java, Spark’s Java APIs are mostly implemented in Scala while hiding class tags and implicit conversions. Converting JavaRDD to ScalaRDD have sense to access some functionality that might only be available in scala.
 
 ### Beyond Scala, and Beyond the JVM
-Going outside of the JVM in Spark—especially on the workers—can involve a substantial performance cost of copying data on worker nodes between the JVM and the target language. PySpark connects to JVM Spark using a mixture of pipes on the workers and Py4J, a specialized library for Python/Java interoperability, on the driver. Copying the data from the JVM to Python is done using sockets and pickled bytes, or the most part, Spark Scala treats the results of Python as opaque bytes arrays.
-You can register Java/Scala UDFs and then use them from Python. Starting in Spark 2.1 this can be done with the register JavaFunction utility on the sqlContext.
+Going outside of the JVM in Spark—especially on the workers—can involve a substantial performance cost of copying data on worker nodes between the JVM and the target language. PySpark connects to JVM Spark using a mixture of pipes on the workers and Py4J, a specialized library for Python/Java interoperability, on the driver. Copying the data from the JVM to Python is done using sockets and pickled bytes, or the most part, Spark Scala treats the results of Python as opaque bytes arrays (_pickle_ is a python module).
+Many of Spark’s Python classes simply exist as wrappers to translate your Python calls to the JVM. You can register Java/Scala UDFs and then use them from Python. Starting in Spark 2.1 this can be done with the register JavaFunction utility on the sqlContext. 
+Arbitrary Java objects can be accessed with `sc._gateway.jvm.[fulljvmclassname]`. If you are working in the Scala shell you can use the _--packages_ command-line argument to specify the Maven coordinates of a package you want in the shell in order to add libraries that give extra functionality to the spark application. If you’re working in the PySpark shell command-line arguments aren’t allowed, so you can instead specify the spark.jars.packages configuration variable. PySpark can be installed using pip. 
+
+### How SparkR Works
+While a similar PipedRDD wrapper exists for R as it does for Python, it is kept internal and the only public interface for work‐ ing with R is through DataFrames. To execute your own custom R code you can use the dapply method on DataFrames, internally dapply is implemented in a similar way to Python’s UDF support.
+
+### Spark.jl (Julia Spark)
+The general design of Spark.jl is similar to that of PySpark, with a custom implementation of the PipedRDD that is able to parse limited amounts of serialized data from Julia implemented inside of the JVM. The same general performance caveats of using PySpark also applies.
+
+### Calling Other Languages from Spark
+To use the pipe interface you start by converting your RDDs into a format in which they can be sent over a Unix pipe. Often simple formats like JSON or CSV are used for communicating, pipe only works with strings, you will need to format your inputs as a string and parse the result string back into the correct data type: `someRDD.pipe(SparkFiles.get(theScriptToCall), enviromentVariablesToPassToTheScript)`.
+
+### JNI
+The Java Native Interface (JNI) can be used to interface with other languages like C/C++, write the specification in scala or java like this:
+
+```scala
+class SumJNI {
+  @native def sum(n: Array[Int]): Int
+}
+```
+
+Once you have your C function and your JNI class specification, you need to generate your class files and from them generate the binder heading. The javah command will take the class files and generate headers that is then used to cre‐ ate a C-side wrapper. All this boilerplate code can be simplified by using JNA (Java Native Access) instead.
+
 
 ## Chapter 8: Testing and Validation<a name="Chapter8"></a>
 ### Unit testing
@@ -405,3 +427,5 @@ Integration tests can be done in several ways:
 
 ### Verifying Performance
 You have access to many of the spark counters for verifying performance in the WebUI, and can get programmatic access to them by registering a SparkListener to collect the information. Spark uses callbacks to provide the metrics, and for performance info we can get most of what we need through onTaskEnd, for which Spark gives us a SparkListenerTaskEnd. This Trait defines a method `def onTaskEnd(taskEnd: SparkListenerTaskEnd)` that can be used to collect metrics.
+
+## Chapter 9: Spark MLlib and ML<a name="Chapter9"></a>
