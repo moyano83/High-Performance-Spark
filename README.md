@@ -10,6 +10,8 @@
 7. [Chapter 7: Going Beyond Scala](#Chapter7)
 8. [Chapter 8: Testing and Validation](#Chapter8)
 9. [Chapter 9: Spark MLlib and ML](#Chapter9)
+10. [Chapter 10: Spark Components and Packages](#Chapter10)
+11. [Appendix A: Tuning, Debugging, and Other Things Developers Like to Pretend Don’t Exist](#AppendixA)
 
 ## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
 Skipped.
@@ -429,3 +431,206 @@ Integration tests can be done in several ways:
 You have access to many of the spark counters for verifying performance in the WebUI, and can get programmatic access to them by registering a SparkListener to collect the information. Spark uses callbacks to provide the metrics, and for performance info we can get most of what we need through onTaskEnd, for which Spark gives us a SparkListenerTaskEnd. This Trait defines a method `def onTaskEnd(taskEnd: SparkListenerTaskEnd)` that can be used to collect metrics.
 
 ## Chapter 9: Spark MLlib and ML<a name="Chapter9"></a>
+MLlib is the first of the two spark machine learning libraries and is entering a maintenance/bug-fix only mode, MLlib supports RDDs and ML supports DataFrames and Datasets, they both deal with RDDs and Datasets of vectors. Currently, if you need to do streaming or online training your only option is working with the MLlib APIs, which supports training on streaming data, using the Spark Streaming DStream API.
+
+### Working with MLlib
+The Maven coordinates for Spark 2.1’s MLlib are _org.apache.spark:spark-mllib_2.11:2.1.0_. Feature selection and scaling require that our data is already in Spark’s internal format. Spark’s internal vector format is distinct from Scala’s, and there are separate vector libraries between MLlib and ML, Spark provides a factory object org.apache.spark.mllib.linalg.Vector, which can con‐ struct both dense and sparse vectors: `Vectors.dense(input) //being input:Array[Any]`, dense vector can be converted into an sparse one with `toSparse`.
+`Word2Vec` and `HashingTF` gets textual data in numeric format, with `HashingTF` operating in an `Iterable[String]` and without need for training: `hashingTFObj.transfor(theIterator)`. `Word2Vec` requires training, which is done with `word2VecObj.fit(iterableOfStrings)`. Broadcasting the model to transform the RDD can yield a big performance improvement.
+To use algorithms on labeled data, create a LabeledPoint with the label and vector of features. LabeledPoint labels of doubles, for non-numeric types a custom function or similar techniques (such as StringIndexer) must be used.
+
+    * Feature scaling and selection: Can lead to vastly improved results for certain algorithms and optimizers, MLib provides the `StandardScaler` for scaling, and `ChiSqSelector` for feature selection 
+    * Model Training: Most MLlib algorithms present a run, which takes in an RDD of LabeledPoints or Vectors and returns a model
+    * Predicting: Most of the MLlib models have predict functions that work on RDDs of SparkVectors, and many also provide an individual predict function for use on one vector at a time, if you need to use the individual predict function inside of a transformation, consider broadcasting the model as well
+    * Serving and Persistence: MLlib provides export support for two formats, a Spark internal format using _Saveable_ trait (which provides the save and load functions) and PMML (Predictive Model Markup Language) using _PMMLExportable_ trait (wich provides the toPMML function)
+    * Model Evaluation: Many models also contain accuracy information, or other summary statistics that can be interesting as a data scientist. _org.apache.spark.mllib.evaluation_ contains tools for calculating different metrics given the predictions and the ground truth.
+
+### Working with Spark ML
+The Spark ML API is built around the concept of a “pipeline” consisting of the different stages, data preparation tasks and classic model training are available as pipeline stages. The maven coordinates are _org.apache.spark:spark-mllib_2.11:2.0.0_.  
+
+#### Pipeline Stages
+A transformer is the simplest pipeline stage, for transformer pipeline stages, you can directly call the transform method, which takes an input DataFrame and returns a new Data Frame. For estimators, you can fit the estimator to a particular input DataFrame using fit which returns a transformer pipeline stage that you can then call transform on.
+Most of the sates are parameterized, if you are working in the shell, `explainParams()` will list all of the params of the stage, the documentation associated with it, and the current value (or `explainParam("paramName")` for a single parameter). To set a parameter use `setParameterName([value])` like for example `setIn putCol("inputCol")`.
+
+#### Data Encoding
+_org.apache.spark.ml.feature_ package contains algorithms from _Binarizer_, _PCA_ to _Word2Vec_. The most common feature transformer is the VectorAssembler, which is used to get your inputs into a format that Spark ML’s machine learning models can work with. Spark’s ML pipeline has the basic text-encoding functions like _Word2Vec_, _StopWordsRemover_, _NGram_, _IDF_, _HashingTF_, and a simple _Tokenizer_. By using _Tokenizer_ together with _HashingTF_ you can convert an input text column into a numeric feature that can be used by Spark. When a _StringIndexer_ is fit, it returns a _StringIndexerModel_ which has a counterpoint transformer called _IndexToString_, which can be used to convert predictions back to the original labels.
+
+#### Data Cleaning
+feature engineering can make a huge difference in the performance of your models. You can use _Binarizer_ to threshold a specific feature, and _PCA_ to reduce the dimension of your data. Use _Normalizer_ when you are training models that work better with normalized features (entire feature vector), or MinMaxScaler (individual column) to easily add normalization of your features to an existing pipeline.
+ 
+#### Spark ML Models
+Each family of machine learning algorithms (classification, regression, recommendation, and clustering) are grouped by package. The machine learning estimators often have more parameters available for configuration than the data preperation estimators, and often take longer to fit.
+
+#### Putting It All Together in a Pipeline
+Example of chaining data preparation and training steps:
+
+```scala
+    val tokenizer = new Tokenizer()
+    tokenizer.setInputCol("name")
+    tokenizer.setOutputCol("tokenized_name")
+    val hashingTF = new HashingTF()
+    hashingTF.setInputCol("tokenized_name")
+    hashingTF.setOutputCol("name_tf")
+    val assembler = new VectorAssembler()
+    assembler.setInputCols(Array("size", "zipcode", "name_tf","attributes"))
+    val nb = new NaiveBayes()
+    nb.setLabelCol("happy")
+    nb.setFeaturesCol("features")
+    nb.setPredictionCol("prediction")
+    val pipeline = new Pipeline()
+    pipeline.setStages(Array(tokenizer, hashingTF, assembler, nb))
+    pipeline.transform(someDf)
+```
+Calling fit() with a specified Data set will fit the pipeline stages in order (skipping transformers) returning a pipeline consisting of entirely trained transformers ready to be used to predict inputs. The root _Pipeline_ class contains a stages param consisting of an array of the pipeline stages. After training, the resulting PipelineModel has an array called stages, consisting of all of the pipeline stages after fitting which can be accessed individually like in `val tokenizer2 = pipelineModel.stages(0).asInstanceOf[Tokenizer]`
+
+#### Data Persistence and Spark ML
+If your data is not reused outside of the machine learning algorithm, many iterative algorithms will handle their own caching, or allow you to configure the persistence level with the intermediateStorageLevel property. Therefore in some cases, not explicitly caching your data when working with Spark’s machine learning algorithms can sometimes be faster than explicitly caching your input. Built-in model and pipeline persistence options with Spark ML are limited to Spark’s internal format.
+
+With _Automated model selection (parameter search)_ Spark can then search across the different parameters to automatically select the best parameters, and the model from it, this search is done linearily and no optimization is used to narrow the provided search space. The parameters you search over need not be limited to those on a single stage either. You can also configure the evaluation metric used to select the best model:
+
+```scala
+    val cv = new CrossValidator().setEstimator(pipeline).setEstimatorParamMaps(paramGrid)
+    val bestModel = cv.fit(df).bestModel
+```
+
+#### Extending Spark ML Pipelines with Your Own Algorithms
+To add your own algorithm to a Spark pipeline, you need create either an Estimator or Transformer, both of which implement the PipelineStage interface. Use the Transformer interface for algorithms not requiring training. Use the Estimator interface for algorithms that do require training.
+
+_Custom transformers_ in addition to the obvious transform or fit function, all pipeline stages need to provide a transformSchema function and a copy constructor, or implement a class that provides these for you. In addition to producing the output schema, the transformSchema function should validate that the input schema is suitable for the stage (for example checking the data types). Your pipeline stage can be configurable using the params interface, the two most common parameters are input column and output column.
+
+_Custom estimators_ the primary difference between the Estimator and Transformer interfaces is that rather than directly expressing your transformation on the input, you will first have a training step in the form of a train function. For many algorithms, the _org.apache.spark.ml.Predictor_ or _org.apache.spark.ml.classificationClassifier_ helper classes are easier to work with than directly using the Estimator interface. The Predictor interface adds the two most common parameters (input and output columns, as labels column, features column, and prediction column) and automatically handles the schema transformation for us. The Classifier interface is similar to the Predictor interface. The predictor interface additionally includes a rawPredictionColumn in the output and provides tools to detect the number of classes (getNumClasses), which are helpful for classification problems.
+
+
+## Chapter 10: Spark Components and Packages<a name="Chapter10"></a>
+### Stream Processing with Spark
+Spark Streaming has two APIs, one based on RDDs—called DStreams—and a second (currently in alpha)—called Structured Streaming—based on Spark SQL/DataFrames. (While developing and testing streaming applications in local mode, a common problem can result from launching with local or local[1] as the master. Spark Streaming requires multiple workers to make progress, so for tests make sure to use a larger number of workers like local[4].)
+
+#### Sources and Sinks
+Both of Spark Streaming’s APIs directly support file sources that will automatically pick up new subdirectories and raw socket sources for testing. For simple testing, Spark offers in-memory streams, QueueStreams for DStream and MemoryStream for streaming Datasets. The DS Stream API has support for Kafka, Flume, Kinesis, Twitter, ZeroMQ, and MQTT.
+Many of Spark’s DStream sources depend on dedicated receiver processes to read in data from your streaming sources (not Kafka neither file-based sources). In the receiver-based configuration, a certain number of workers are configured to read data from the input data streams, 
+ for receiver-based approaches, the partitioning of your DStream reflects your receiver configuration. In the direct (receiverless) approaches the initial partitioning is based on the partitioning of the input stream. If your data is not ideally partitioned for processing, explicitly repartitioning as we can on RDDs is the simplest way to fix it (when repartitioning keyed data, having a known partitioner can speed up many operations). If the bottleneck comes from reading, you must increase the number of the partitions in the input data source (for direct) or number of receivers: 
+
+```scala
+//transform takes the RDD for each time slice and applies your transformations.
+def dStreamRepartition[A: ClassTag](dstream: DStream[A]):DStream[A] = stream.transform{rdd=> rdd.repartition(20)}
+```
+
+### Batch Intervals
+Spark Streaming processes each batch interval completely before starting the next one, you should set your batch interval to be high enough for the previous batch to be processed before the next one starts (starts with a high value and reduce until you 
+find the optimal). In the DStream API the interval is configured on application/context level like in `new StreamingContext(sc, Seconds(1))`, for the Structured Streaming API is configured on a per-output/query.
+
+### Data Checkpoint Intervals
+As with iterative algorithms, streaming operations can generate DAGs or query plans that are too large for the driver program to keep in memory, for operations that depend on building a history, like streaming aggregations on Datasets and updateStateByKey on DStreams, check‐ pointing is required to prevent the DAG or query plan from growing too large:
+
+```scala
+sparkContext.setCheckpointDir(directory)
+dsStream.checkpoint()
+```
+
+### Considerations for DStreams
+Most of the operations of the DSStream API are simple wrappers of RDD methods with transform, but not all. The window operation allows you to construct a sliding window of time of your input DStream, Window operations allow you to compute your data over the last K batches of data. Window operations are defined based on the windowDuration, which is the width of the window, and the slideDuration, which is how often window is computed. To save batch as text files use `dstream.saveAsTextFiles(target)`.
+`foreachRDD` works almost the same as transform, except it is an action instead of a transformation:
+`dstream.foreachRDD((rdd, window) => rdd.saveAsSequenceFile(target + window))`.
+
+### Considerations for Structured Streaming
+Structured Streaming allows you to conceptually think of running SQL queries on an infinite table, which has records appended to it by the stream. Streaming keeps the existing Dataset type and adds a boolean isStreaming to difference it between streaming and batch Datasets. Not all operations available in Datasets are present in the Structured Streaming Datasets (like `toJson`).
+
+#### Data sources
+To load a streaming data source simply call readStream instead of read: `session.readStream.parquet(inputPath) //Sampling schema inference doesn’t work with streaming data`
+
+#### Output operations
+An important required configuration is the out putMode, which is unique and can be set to either append (for new rows) or complete (for all rows). The DataStreamWriter can write collections out to the following formats: _console_ (writes the result out to the terminal), _foreach_ (format can't be specified, it must be set by calling foreach on the writer object and set up the desired function), and _memory_ (writes the result out to a local table):
+`dsStream.writeStream.outputMode(OutputMode.Complete()).format("parquet").trigger(ProcessingTime(1.second)).queryName("pandas").start()`
+
+#### Custom sinks
+ A custom sink needs to be supplied by name, so it is difficult to construct it with arbitrary functions (at compile time one needs to know the function for the specified sink. e.g., it cannot vary based on user input). An example of this is shown below:
+`ds.writeStream.format("com.test.MyCustomSink").queryName("customSink").start()` 
+
+#### Machine learning with Structured Streaming
+The machine learning API is not yet integrated in the Structured Streaming, although you can get it work with custom work. Spark’s Structured Streaming has an in-memory table output format that you can use to store the aggregate counts:
+
+`ds.writeStream.outputMode(OutputMode.Complete()).format("memory").queryName(myTblName).start()`
+
+You can also can come up with an update mechanism on how to merge new data into your existing model, the DStream `foreachRDD` implementation allows you to access the underlying microbatch view of the data, `foreachRDD` doesn’t have a direct equivalent in Structured Streaming, but by using a custom sink you can get similar behavior.
+
+#### Stream status and debugging
+Each query is associated with at most one sink, but possible multiple sources. The status function on a StreamingQuery returns an object containing the sta‐ tus information for the query and all of the data sources associated with it.
+
+### High Availability Mode (or Handling Driver Failure or Checkpointing)
+High availability mode works by checkpointing the driver state, and allows Spark to recover when the driver program fails. To allow the restart of an streaming application to be successful, you need to provide a function to handle recovery:
+
+```scala
+// Accumulators and broadcast variables are not currently recovered in high availability mode.
+def createStreamingContext(): StreamingContext = { 
+val ssc = new StreamingContext(sc, Seconds(1))
+// Then create whatever stream is required, and whatever mappings need to go on those streams
+ssc.checkpoint(checkpointDir)
+ssc
+}
+val ssc = StreamingContext.getOrCreate(checkpointDir,createStreamingContext _)
+// Do whatever work needs to be done regardless of state, start context and run
+ssc.start()
+```
+
+### Creating a Spark Package
+Spark Packages allow people outside of the Apache Spark project to release their improvements or libraries built on top of Spark. 
+
+## Appendix A: Tuning, Debugging, and Other Things Developers Like to Pretend Don’t Exist<a name="AppendixA"></a>
+### Spark Tuning and Cluster Sizing
+Most Spark settings can only be adjusted at the application level. These configurations can have a large impact on a job’s speed and chance of completing. The primary resources that the Spark application manages are CPU (number of cores) and memory. Generally speaking there are four primary pieces of information we have to know about our hardware:
+ 
+    * How large can one request be? In YARN cluster mode, this is the maximum size of the YARN container.
+    * How large is each node? The memory available to each node is likely greater than or equal to one container. 
+    * How many nodes does your cluster have? How many are active? In general it is best to have at least one executor per node.
+    * What percent of the resources are available on the system where the job will be submitted? If you are using a shared cluster environment, is the cluster busy? Often, if a Spark application requests more resources than exist in the queue into which it is submitted, but not more than exist on the whole cluster, the request will not fail, but instead will hang in a pending state.
+    
+### Basic Spark Core Settings: How Many Resources to Allocate to the Spark Application?
+The size of the driver, size of the executors, and the number of cores associated with each executor, are configurable from the conf and static for the duration of a Spark application (all executors should be of equal size).
+In YARN cluster mode and YARN client mode the executor memory overhead is set with _the spark.yarn.executor.memoryOverhead_ value. In YARN cluster mode the driver memory is set with _spark.yarn.driver.memoryOverhead_, but in YARN client mode that value is called _spark.yarn.am.memoryOverhead_. Follow the following rule to calculate the requirements:
+MEMORY OVERHEAD =Max(MEMORY_OVERHEAD_FACTOR x requested memory, MEMORY_OVERHEAD_MINIMUM). Where MEMORY_OVERHEAD_FACTOR = 0.10 and MEMORY_OVERHEAD_MINIMUM = 384 mb.
+Jobs may fail if they collect too much data to the driver or perform large local computations, increasing the driver memory with _spark.driver.maxResultSize_ may prevent the out-of-memory errors in the driver (set to 0 to disregard the limit). In YARN and Mesos cluster mode, the driver can be run with more cores with _spark.driver.cores_, usually the driver requires one core.
+
+#### A Few Large Executors or Many Small Executors?
+
+    * Many small executors: 2 Downsizes: The risk or running out of resources to compute a partition and having too many executors may not be an efficient use of our resources. If resources are available, executors should be no smaller than about four gigs, at which point overhead will be based on the memory overhead factor (a constant 10 percent of the executor).
+    * Many large executors: Very large executors may be wasteful, to use all the resources and to have the driver smaller than the size of one node, we might need to have more executors per node than one, very large executors may cause delays in garbage collection. Experience shows that five cores per executor should be the upper limit. 
+
+#### Allocating Cluster Resources and Dynamic Allocation
+Dynamic allocation is a process by which a Spark application can request and de- commission executors as needed throughout the course of an application. With dynamic allocation, Spark requests additional executors when there are pending tasks. Second, Spark decommissions executors that have not been used to compute a job in the amount of time specified by the _spark.dynamicAllocation.executorIdleTime_. By default Spark doesn't decommission nodes with cache data, use _spark.dynamicAllocation.cachedExecutorIdleTimeout_ to set a value for this.
+The number of executors that Spark should start with when an application is launched is configured with _spark.dynamicAllocation.initialExecutors_ (defaults 0). Dynamic allocation does not allow executors to change in size you still must determine the size of each executor before starting the job, so size the executors as you would if you were trying to use all the resources on the cluster. For High-traffic clusters, small executors may allow dynamic allocation to increase the number of resources used more quickly if space becomes available on the nodes in a piecemeal way. To configure dynamic allocation:
+
+    * Set the configuration value spark.dynamicAllocation.enabled to true.
+    * Configure an external shuffle service on each worker. This varies based on the cluster manager, check Spark documentation for details.
+    * Setspark.shuffle.service.enabled to true.
+    * Do not provide a value for the spark.executor.instances parameter.
+
+#### Dividing the Space Within One Executor
+The JVM size set by the spark.executor.memory property does not include overhead, so Spark executors require more space on a clus‐ ter than this number would suggest. On an executor, about 25% of memory is reserved for Spark’s internal metadata and user data structures, the remaining space on the executor (called M in the Spark documentation), is used for execution and storage, and is governed by a fixed fraction, exposed in the conf as the _spark.memory.fraction_. Within this M, some space is set aside for storage (Spark’s in-memory storage of partitions, whether serialized or not), and the rest can be used for storage or execution. Within the execution space, Spark defines a region of the execution called R for storing cached data. The size of R is determined by a percentage of M set by the _spark.memory.storageFraction_ (R won't be reclaimed for execution if there is cached data present). If an application requires repeated access to an RDD and performance is improved by caching the RDD in memory, it may be useful to increase the size of the storage fraction to prevent the RDDs you needed cached from being evicted.
+
+#### Number and Size of Partitions
+By default, when an RDD is created by reading from sta‐ ble storage, the number of partitions corresponds to the splits configured in that input format. If the number of partitions is not specified for the wide transformation, Spark defaults to using the number specified by the conf value of _spark.default.parallelism_. At a minimum you should use as many partitions as total cores, increasing the number of partitions can also help reduce out-of-memory errors. An strategy to determine the optimal number of partitions can be:
+
+`memory_for_compute (M)<(spark.executor.memory - over head) * spark.memory.fraction`
+
+And if there is cached data:
+
+`memory_for_compute (M - R) < (spark.executor.memory - overhead) x spark.memory.fraction x (1 - spark.memory.storage.fraction)`
+
+Assuming this space is divided equally between the tasks, then each task should not take more than:
+
+`memory_per_task = memory_for_compute / spark.executor.cores`
+
+Thus, we should set the number of partitions to:
+
+`number_of_partitions = size of shuffle stage / memory per task`
+
+We can also try to observe the shuffle stage to determine the memory cost of a shuffle. If we observe that during the shuffle stage the computation is not spilling to disk, then it is likely that each partition is fit‐ ting comfortably in-memory and we don’t need to increase the number of partitions.
+
+#### Serialization Options
+Kryo, like the Tungsten serializer, does not natively support all of the same types that are Java serializable. The next version of Spark is adding support for Kryo’s unsafe serializer, which can be even faster than Tungsten and can be enabled by setting spark.kryo.unsafe to true.
+ 
+#### Some Additional Debugging Techniques
+Debugging a system that relies on lazy evaluation requires removing the assumption that the error is necessarily directly related to the line of code that appears to trigger the error, adding a take(1) or count call on the parent RDDs or DataFrames to track down the issue more quickly in development environments. In production, if the error comes from the executors, you should look for traces like `ERROR Executor: Exception in task 0.0 in stage 0.0 (TID 0).` which points you to the line number of the executor code that has failed. In this cases, errors are more easily spotted if there is no use of anonymous functions.
+
+#### Logging
+Spark uses the log4j through sl4j logging mechanism internally, to adjust the log level use the sparkContext with `sc.setLogLevel(newLevel)` or by using the conf/log4j.properties.template (rename it to log4j.properties). Also, you can ship a custom log4j.xml file and provide it to the executors (either by including it in your JAR or with --files) and then add _-Dlog4j.configuration=log4j.xml_ to _spark.executor.extraJavaOptions_ so the executors pick it up.
+In YARN, `yarn logs` command can be used to fetch the logs. If you don’t have log aggregation enabled, you can still access the logs by keeping them on the worker nodes for a fixed period of time with the _yarn.nodemanager.delete.debug-delay-sec_ configuration property.
