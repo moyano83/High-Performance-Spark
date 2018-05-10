@@ -20,7 +20,9 @@ object Chapter3 {
 
     val df = session.createDataFrame(Seq(place))
     df.printSchema()
-    df.filter(df("happy") =!= true)
+
+    val pandas = df.select(df("pandas").as[Array[RawPanda]]).flatMap(p=>p).filter(p => p.happy != true)
+    val pandas2 = session.createDataFrame(Seq(damao1, damao2)).filter(!$"happy").as[RawPanda] //Equivalent to the above
 
     val pandaInfo = df.explode(df("pandas")){
       case Row(pandas:Seq[Row]) => pandas.map {
@@ -29,9 +31,11 @@ object Chapter3 {
       }
     }
 
-    pandaInfo.select(pandaInfo("attributes")(0) / pandaInfo("attributes")(1)).as("squishyness")
-    Window.orderBy(pandaInfo("id")).partitionBy("pt").rangeBetween(-10,10)
+    val squishynessPandas = pandaInfo.select(pandaInfo("attributes")(0) / pandaInfo("attributes")(1)).as("squishyness")
+    val windowSpec = Window.orderBy(pandaInfo("id")).partitionBy("pt").rangeBetween(-10,10)
 
+    val sizeDeviation = pandaInfo("size") - avg(pandaInfo("size")).over(windowSpec)
+    val maxVal = pandaInfo.groupBy($"id").agg(max(pandaInfo("attributes")(0)))
   }
 
   def encodePandaType(pandaInfo:DataFrame): Unit ={

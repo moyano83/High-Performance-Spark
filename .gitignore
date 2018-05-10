@@ -22,4 +22,3 @@ docs-api/_build
 
 # Platform specific - Mac OSX
 .DS_Store
-/README.md

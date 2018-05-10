@@ -28,7 +28,8 @@ object Chapter6 {
       List((firstKey, ArrayBuffer((secondKey, value))))
     case head :: rest =>
       val (curKey, valueBuf) = head
-      val ((firstKey, secondKey), value) = next if (!firstKey.equals(curKey) ) {
+      val ((firstKey, secondKey), value) = next
+      if (!firstKey.equals(curKey) ) {
       (firstKey, ArrayBuffer((secondKey, value))) :: list } else {
       valueBuf.append((secondKey, value))
       list

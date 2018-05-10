@@ -12,6 +12,11 @@ object Chapter5 extends App{
       p.attributes(0))
       (p.zip, p.id)
     }
+
+
+    val zip = sc.longAccumulator("zip")
+    rdd.foreach(p=> zip.add(p.id))
+
     transformed.count()
     (transformed, acc.value)
   }
