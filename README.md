@@ -172,13 +172,13 @@ Spark supports multiple direct loading formats like:
     abstraction `JdbcDialects` to speak with the different vendors. The `save()` method does not require a path as 
     the information about the table is already available.
     * Parquet: Parquet provides space-efficiency, ability to split across multiple files, compression, nested types.
-    .. We can load a parquet file by calling `df.format("parquet").load(path)`. 
+    We can load a parquet file by calling `df.format("parquet").load(path)`. 
     * Hive Tables: If hive is configured, we can load tables with `session.read.table("myTable")` and save results 
     to a table with `df.write.saveAsTable("myTable")`.
     * RDDs: Can be converted to dataframes by providing a StructType with the schema definition. DataFrames can be 
     converted to RDDs of Row objects (by calling the `.rdd` method).
-    * Local collections: You can create a dataframe from a local collection by calling `session.createDataFrame
-    (seqOfObjects)`.
+    * Local collections: You can create a dataframe from a local collection by calling:
+    session.createDataFrame(seqOfObjects)
     * Additional Formats: Some vendors publish their own implementations like Avro, RedShift, CSV. This custom 
     packages can be included by passing the `--packages <package>` argument to the shell or submit.
     
@@ -415,7 +415,7 @@ accumulators to double count a value if the RDD has to be recomputed as the exec
 
 ## Chapter 6: Working with Key/Value data<a name="Chapter6"></a>
 Spark has its own PairRDDFunctions class containing operations defined on RDDs of tuples. The OrderedRDDFunctions 
-class contains the methods for sorting. Operations on key/value pairs can cause:
+ class contains the methods for sorting. Operations on key/value pairs can cause:
 
     * Out-of-memory errors in the driver or executor nodes
     * Shuffle failures
@@ -425,14 +425,14 @@ class contains the methods for sorting. Operations on key/value pairs can cause:
 One way to minimize the number of shuffles in a computation that requires several transformations is to make sure to
  preserve partitioning across narrow transformations to avoid reshuffling data. Also, by using wide transformations 
  such as reduceByKey and aggregateByKey that can perform map-side reductions and that do not require loading all the
-  records for one key into memory, you can prevent memory errors on the executors and speed up wide transformations,
-   particularly for aggregation operations.
+ records for one key into memory, you can prevent memory errors on the executors and speed up wide transformations,
+ particularly for aggregation operations.
 To use the functions available in PairRDD and OrderedRDD types, the keys should have an implicit ordering defined, 
-Spark uses implicit conversion to convert an RDD that meets the PairRDD or OrderedRDD requirements from a generic 
-type to the PairRDD or OrderedRDD type. This implicit conversion requires that the correct library already be 
-imported. Thus, to use Spark’s pairRDDFunctions, you need to have imported the SparkContext.
+ Spark uses implicit conversion to convert an RDD that meets the PairRDD or OrderedRDD requirements from a generic 
+ type to the PairRDD or OrderedRDD type. This implicit conversion requires that the correct library already be 
+ imported. Thus, to use Spark’s pairRDDFunctions, you need to have imported the SparkContext.
 Actions might return unbounded data to the driver (like in `countByKey`, `countByValue`, `lookUp`, and 
-`collectAsMap`) thus it can cause memory issues.
+ `collectAsMap`) thus it can cause memory issues.
 Example of using `groupByKey` to calculate ranked statistics over a group of columns: 
 
 ```scala
@@ -478,8 +478,8 @@ of records by key before shuffling (e.g., aggregate ByKey or reduceByKey). If th
   Spark from shuffling the RDD being repeatedly joined.
 
 #### Partitioners and Key/Value Data
-An RDD without a known partitioner will assign data to partitions according only to the data size and partition size
-. For RDDs of a generic record type, repartition and coalesce can be used to simply change the number of partitions 
+An RDD without a known partitioner will assign data to partitions according only to the data size and partition size. 
+For RDDs of a generic record type, repartition and coalesce can be used to simply change the number of partitions 
 that the RDD uses, irrespective of the value of the records in the RDD. Repartition shuffles the RDD with a hash 
 partitioner and the given number of partitions, coalesce is a special repartition that avoids a full shuffle if the 
 desired number of partitions is less than the current number of partitions (if is more then is a repartition with 
@@ -545,8 +545,13 @@ the same physical location.
     desired range.
     
 #### Sorting by Two Keys with SortByKey
-Spark’s sortByKey does allow sorting by tuples of keys for tuples with two elements like in `indexValuePairs.map((_,
- null)).sortByKey()`, comparing the first value of the tuple and then the second. 
+Spark’s sortByKey does allow sorting by tuples of keys for tuples with two elements like in:
+
+```scala
+indexValuePairs.map((_, null)).sortByKey()
+```
+
+comparing the first value of the tuple and then the second. 
 
 ### Secondary Sort and repartitionAndSortWithinPartitions
 Using secondary sort in spark is faster than partitioning and then sorting, the repartitionAndSortWithinPartitions 
@@ -587,8 +592,8 @@ the shell in order to add libraries that give extra functionality to the spark a
 
 ### How SparkR Works
 While a similar PipedRDD wrapper exists for R as it does for Python, it is kept internal and the only public 
-interface for work‐ ing with R is through DataFrames. To execute your own custom R code you can use the dapply 
-method on DataFrames, internally dapply is implemented in a similar way to Python’s UDF support.
+interface for working with R is through DataFrames. To execute your own custom R code you can use the _dapply_ 
+method on DataFrames, internally _dapply_ is implemented in a similar way to Python’s UDF support.
 
 ### Spark.jl (Julia Spark)
 The general design of Spark.jl is similar to that of PySpark, with a custom implementation of the PipedRDD that is 
