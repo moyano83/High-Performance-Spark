@@ -492,7 +492,7 @@ than a number of partitions and shuffles the RDD with the new partitioner.
   be send). Two implementations are provided:
  
      * Hash partitioner: The default one for pair RDD operations (not ordered), defines the partition based on the 
-     of the key.
+     hashcode of the key.
      * Range partitioner: Assigns records whose keys are in the same range to a given partition. Range partitioning 
      is required for sorting since it ensures that by sorting records within a given partition, the entire RDD will 
      be sorted. Creating a RangePartitioner with Spark requires not only a number of partitions, but also the actual 
@@ -618,7 +618,7 @@ class SumJNI {
 
 Once you have your C function and your JNI class specification, you need to generate your class files and from them 
 generate the binder heading. The javah command will take the class files and generate headers that is then used to 
-cre‐ ate a C-side wrapper. All this boilerplate code can be simplified by using JNA (Java Native Access) instead.
+create a C-side wrapper. All this boilerplate code can be simplified by using JNA (Java Native Access) instead.
 
 
 ## Chapter 8: Testing and Validation<a name="Chapter8"></a>
@@ -692,7 +692,7 @@ DataFrames also have sample and randomSplit available directly on them. If you w
 on DataFrames, you must convert them to an RDD first.
 
 #### Property Checking with ScalaCheck
-ScalaCheck is a property-based testing library for Scala similar to Haskell’s Quick‐ Check. Property-based testing 
+ScalaCheck is a property-based testing library for Scala similar to Haskell’s QuickCheck. Property-based testing 
 allows you to specify invariants about your code (for example, all of the outputs should have the substring “panda”)
  and lets the testing library generate different types of test input for you. _sscheck_ and _spark-testing-base_, 
  implement generators for Spark.
@@ -730,7 +730,7 @@ MLlib is the first of the two spark machine learning libraries and is entering a
 The Maven coordinates for Spark 2.1’s MLlib are _org.apache.spark:spark-mllib_2.11:2.1.0_. Feature selection and 
 scaling require that our data is already in Spark’s internal format. Spark’s internal vector format is distinct from 
 Scala’s, and there are separate vector libraries between MLlib and ML, Spark provides a factory object org.apache
-.spark.mllib.linalg.Vector, which can con‐ struct both dense and sparse vectors: `Vectors.dense(input) //being 
+.spark.mllib.linalg.Vector, which can construct both dense and sparse vectors: `Vectors.dense(input) //being 
 input:Array[Any]`, dense vector can be converted into an sparse one with `toSparse`.
 `Word2Vec` and `HashingTF` gets textual data in numeric format, with `HashingTF` operating in an `Iterable[String]` 
 and without need for training: `hashingTFObj.transfor(theIterator)`. `Word2Vec` requires training, which is done with
@@ -943,7 +943,7 @@ have a direct equivalent in Structured Streaming, but by using a custom sink you
 
 #### Stream status and debugging
 Each query is associated with at most one sink, but possible multiple sources. The status function on a 
-StreamingQuery returns an object containing the sta‐ tus information for the query and all of the data sources 
+StreamingQuery returns an object containing the status information for the query and all of the data sources 
 associated with it.
 
 ### High Availability Mode (or Handling Driver Failure or Checkpointing)
@@ -1028,7 +1028,7 @@ The number of executors that Spark should start with when an application is laun
 
 #### Dividing the Space Within One Executor
 The JVM size set by the spark.executor.memory property does not include overhead, so Spark executors require more 
-space on a clus‐ ter than this number would suggest. On an executor, about 25% of memory is reserved for Spark’s 
+space on a cluster than this number would suggest. On an executor, about 25% of memory is reserved for Spark’s 
 internal metadata and user data structures, the remaining space on the executor (called M in the Spark 
 documentation), is used for execution and storage, and is governed by a fixed fraction, exposed in the conf as the 
 _spark.memory.fraction_. Within this M, some space is set aside for storage (Spark’s in-memory storage of 
@@ -1040,7 +1040,7 @@ in memory, it may be useful to increase the size of the storage fraction to prev
 being evicted.
 
 #### Number and Size of Partitions
-By default, when an RDD is created by reading from sta‐ ble storage, the number of partitions corresponds to the 
+By default, when an RDD is created by reading from stable storage, the number of partitions corresponds to the 
 splits configured in that input format. If the number of partitions is not specified for the wide transformation, 
 Spark defaults to using the number specified by the conf value of _spark.default.parallelism_. At a minimum you 
 should use as many partitions as total cores, increasing the number of partitions can also help reduce out-of-memory
@@ -1064,7 +1064,7 @@ Thus, we should set the number of partitions to:
 `number_of_partitions = size of shuffle stage / memory per task`
 
 We can also try to observe the shuffle stage to determine the memory cost of a shuffle. If we observe that during 
-the shuffle stage the computation is not spilling to disk, then it is likely that each partition is fit‐ ting 
+the shuffle stage the computation is not spilling to disk, then it is likely that each partition is fitting 
 comfortably in-memory and we don’t need to increase the number of partitions.
 
 #### Serialization Options
