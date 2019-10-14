@@ -13,8 +13,10 @@
 10. [Chapter 10: Spark Components and Packages](#Chapter10)
 11. [Appendix A: Tuning, Debugging, and Other Things Developers Like to Pretend Don’t Exist](#AppendixA)
 
+
 ## Chapter 1: Introduction to High Performance Spark<a name="Chapter1"></a>
 Skipped.
+
 
 ## Chapter 2: How Spark Works<a name="Chapter2"></a>
 Spark is a computational engine that can be used in combination with storage system such as S3, HDFS or Cassandra, 
@@ -235,6 +237,7 @@ programmatically you can create the server with `HiveTriftServer2.startWithConte
     * Pure RDDs work well for data that does not fit into the Catalyst optimizer, although aggregates, complex 
     joins, and windowed operations, can be daunting to express with the RDD API.
 
+
 ## Chapter 4: Joins (SQL and Core)<a name="Chapter4"></a>
 #### Core Spark Joins
 Joins are expensive as they require the keys from each RDD to be in the same partition so they can be combined (the 
@@ -281,9 +284,10 @@ To speed up the joins we can use different techniques:
      "full_outher", "left_anti" (filtering the left table to get only rows that has a key on the right table) or 
      "left_semi" (filtering the left table to get only rows that does not have a key on the right table).
      * Self Joins: To avoid Column name duplication you need to alias the dataframe to have different names.
-     * Broadcast has joins: Equivalent to the RDD broadcast has join. Example: df1.join(broadcast(df2), "key")
-     * Datasets Joins: It is done with `joinWith`, which yields a tuple of the different record types. Example: ds1
-     .joinWith(ds2,$"columnInDs1" == $"columnInDs2", left_outer)  
+     * Broadcast hash joins: Equivalent to the RDD broadcast hash join. Example: df1.join(broadcast(df2), "key")
+     * Datasets Joins: It is done with `joinWith`, which yields a tuple of the different record types. Example: 
+     ds1.joinWith(ds2,$"columnInDs1" == $"columnInDs2", left_outer)  
+    
     
 ## Chapter 5: Effective Transformations<a name="Chapter5"></a>
 
@@ -355,12 +359,12 @@ To set up operations like open a DB connection, it is recommended to do the setu
 ```
 
 If a setup can't be serialized, a broadcast variable with `transient lazy val` modifiers can be used. Use 
-`unpersist` to remove explicitly a broadcasted variable.
-Accumulators are used to collect by-product information from an action (computation) and then bring the result to 
-the driver. If the computation takes place  multiple times then the accumulator would also be updated multiple times
-. The accumulator operation is associative, you can create new accumulator types by implementing 
+`unpersist` to remove explicitly a broadcasted variable. Accumulators are used to collect by-product information from 
+an action (computation) and then bring the result to the driver. If the computation takes place multiple times then 
+the accumulator would also be updated multiple times.
+The accumulator operation is associative, you can create new accumulator types by implementing 
 `AccumulatorV2[InputType, ValueType]` and provide `reset` (sets the initial value in the accumulator), `copy` 
-(returns a copy of the accumulator with the same value), `isZero` (is initial value), `value` (returns the value), 
+(returns a copy of the accumulator with the same value), `isZero` (its initial value), `value` (returns the value), 
 `merge` (merges two accumulators) and `add` (adds two accumulators) methods. The input and value types are different
  because the value method can perform complex computations and return a different value.
 
@@ -409,9 +413,10 @@ to avoid recomputing some RDDs), the files are cleaned up when the RDD they repr
 #### Noisy cluster considerations
 The clusters with a high volume of unpredictable traffic (called noisy clusters) are particularly suitable for 
 checkpointing and multiple storage copies, this is particularly true for expensive wide transformations. Spark uses 
-FIFO to queue jobs, but this can be changed to a fair scheduler which uses round robin to allocate resources to jobs
-. It is also possible to configure pools with different weights to allocate resources. Caching does not prevent 
+FIFO to queue jobs, but this can be changed to a fair scheduler which uses round robin to allocate resources to jobs.
+It is also possible to configure pools with different weights to allocate resources. Caching does not prevent 
 accumulators to double count a value if the RDD has to be recomputed as the executor might fail entirely.
+
 
 ## Chapter 6: Working with Key/Value data<a name="Chapter6"></a>
 Spark has its own PairRDDFunctions class containing operations defined on RDDs of tuples. The OrderedRDDFunctions 
@@ -566,6 +571,7 @@ _Stragglers_ are those tasks within a stage that take much longer to execute tha
 When wide transformations are called on the same RDD, stages must usually be executed in sequence, so straggler 
 tasks may hold up an entire job. 
 
+
 ## Chapter 7: Going Beyond Scala<a name="Chapter7"></a>
 Spark supports a range of languages for use on the driver, and an even wider range of languages can be used inside 
 of our transformations on the workers. Generally the non-JVM language binding calls the Java interface for Spark 
@@ -638,8 +644,8 @@ Testing Spark Streaming can be done with queueStream which creates input streams
 
 ```scala
 def makeSimpleQueueStream(ssc: StreamingContext) = {
-val input = List(List("hi"), List("happy pandas", "sad pandas")).map(sc.parallelize(_))
-val nonCheckpointableInputDsStream = ssc.queueStream(Queue(input:_*))
+  val input = List(List("hi"), List("happy pandas", "sad pandas")).map(sc.parallelize(_))
+  val nonCheckpointableInputDsStream = ssc.queueStream(Queue(input:_*))
 }
 ```
 
@@ -648,42 +654,43 @@ checkpointable.
 
 ```scala
 private[thetestpackage] def createTestInputStream[T: ClassTag]( sc: SparkContext,
-ssc_ : TestStreamingContext,
-input: Seq[Seq[T]]): TestInputStream[T] = {
-new TestInputStream(sc, ssc_, input, numInputPartitions) }
+  ssc_ : TestStreamingContext,
+  input: Seq[Seq[T]]): TestInputStream[T] = {
+    new TestInputStream(sc, ssc_, input, numInputPartitions) 
+}
 ```
 
 spark-testing-base provides two streaming test base classes: Streaming SuiteBase for transformations and 
 StreamingActionBase for actions.
 
 #### Mocking RDDs
-kontextfrei is a Scala-only library that enables to you to write the business logic and test code of your Spark 
+kontextfrei is a Scala-only library that enables you to write the business logic and test code of your Spark 
 application without depending on RDDs, but using the same API.
 
 #### Getting Test Data
-Spark has some built-in components for generating random RDDs in the RandomRDDs object in mllib. There are built-in 
+Spark has some built-in components for generating random RDDs, like the RandomRDDs object in mllib. There are built-in
 generator functions for exponential, gamma, log‐Normal, normal, poisson, and uniform distributions as both RDDs of 
 doubles and RDDs of vectors. 
 
 ```scala
 def generateGoldilocks(sc: SparkContext, rows: Long, numCols: Int): RDD[RawPanda] = {
-val zipRDD = RandomRDDs.exponentialRDD(sc, mean = 1000, size = rows) .map(_.toInt.toString)
-val valuesRDD = RandomRDDs.normalVectorRDD( sc, numRows = rows, numCols = numCols)
-zipRDD.zip(valuesRDD).map{case (z, v) =>RawPanda(1, z, "giant", v(0) > 0.5, v.toArray) }
+  val zipRDD = RandomRDDs.exponentialRDD(sc, mean = 1000, size = rows) .map(_.toInt.toString)
+  val valuesRDD = RandomRDDs.normalVectorRDD( sc, numRows = rows, numCols = numCols)
+  zipRDD.zip(valuesRDD).map{case (z, v) =>RawPanda(1, z, "giant", v(0) > 0.5, v.toArray) }
 }
 ```
 
 #### Sampling
 If it’s available as an option to you, sampling your production data can be a great source of test data. Spark’s 
 core RDD and Pair RDD functionality both support customizable random samples. The simplest method for sampling, 
-directly on the RDD class, is the function sample, which takes withReplacement: Boolean, fraction: Double, seed: 
-Long (optional) => `rdd.sample(withReplacement=false, fraction=0.1)`.
+directly on the RDD class, is the function sample, which takes the following:
+withReplacement: Boolean, fraction: Double, seed: Long (optional) => `rdd.sample(withReplacement=false, fraction=0.1)`
 You can directly construct a `PartitionwiseSampleRDD` with your own sampler, provided it implements the 
 `RandomSampler` trait from `org.apache.spark.util.random`. `sampleByKeyExact` and `sampleByKey` take in a map of the
  percentage for each key to keep allowing you to perform stratified sampling.
 
 ```scala
-   // 5% of the red pandas, and 50% of the giant pandas
+// 5% of the red pandas, and 50% of the giant pandas
 val stratas = Map("red" -> 0.05, "giant" -> 0.50)
 rdd.sampleByKey(withReplacement=false, fractions = stratas)
 ```
@@ -699,8 +706,10 @@ allows you to specify invariants about your code (for example, all of the output
 
 ```scala
 // A trivial property that the map doesn't change the number of elements
-test("map should not change number of elements") { val property =
-  forAll(RDDGenerator.genRDD[String](sc)(Arbitrary.arbitrary[String])) {rdd => rdd.map(_.length).count() == rdd.count()}
+test("map should not change number of elements") { 
+val property = forAll(RDDGenerator.genRDD[String](sc)(Arbitrary.arbitrary[String])) {
+    rdd => rdd.map(_.length).count() == rdd.count()
+  }
   check(property)
 }
 ```
@@ -719,6 +728,7 @@ You have access to many of the spark counters for verifying performance in the W
  for performance info we can get most of what we need through onTaskEnd, for which Spark gives us a 
  SparkListenerTaskEnd. This Trait defines a method `def onTaskEnd(taskEnd: SparkListenerTaskEnd)` that can be used to
   collect metrics.
+
 
 ## Chapter 9: Spark MLlib and ML<a name="Chapter9"></a>
 MLlib is the first of the two spark machine learning libraries and is entering a maintenance/bug-fix only mode, MLlib
@@ -784,27 +794,27 @@ threshold a specific feature, and _PCA_ to reduce the dimension of your data. Us
 #### Spark ML Models
 Each family of machine learning algorithms (classification, regression, recommendation, and clustering) are grouped 
 by package. The machine learning estimators often have more parameters available for configuration than the data 
-preperation estimators, and often take longer to fit.
+preparation estimators, and often take longer to fit.
 
 #### Putting It All Together in a Pipeline
 Example of chaining data preparation and training steps:
 
 ```scala
-    val tokenizer = new Tokenizer()
-    tokenizer.setInputCol("name")
-    tokenizer.setOutputCol("tokenized_name")
-    val hashingTF = new HashingTF()
-    hashingTF.setInputCol("tokenized_name")
-    hashingTF.setOutputCol("name_tf")
-    val assembler = new VectorAssembler()
-    assembler.setInputCols(Array("size", "zipcode", "name_tf","attributes"))
-    val nb = new NaiveBayes()
-    nb.setLabelCol("happy")
-    nb.setFeaturesCol("features")
-    nb.setPredictionCol("prediction")
-    val pipeline = new Pipeline()
-    pipeline.setStages(Array(tokenizer, hashingTF, assembler, nb))
-    pipeline.transform(someDf)
+val tokenizer = new Tokenizer()
+tokenizer.setInputCol("name")
+tokenizer.setOutputCol("tokenized_name")
+val hashingTF = new HashingTF()
+hashingTF.setInputCol("tokenized_name")
+hashingTF.setOutputCol("name_tf")
+val assembler = new VectorAssembler()
+assembler.setInputCols(Array("size", "zipcode", "name_tf","attributes"))
+val nb = new NaiveBayes()
+nb.setLabelCol("happy")
+nb.setFeaturesCol("features")
+nb.setPredictionCol("prediction")
+val pipeline = new Pipeline()
+pipeline.setStages(Array(tokenizer, hashingTF, assembler, nb))
+pipeline.transform(someDf)
 ```
 Calling fit() with a specified Data set will fit the pipeline stages in order (skipping transformers) returning a 
 pipeline consisting of entirely trained transformers ready to be used to predict inputs. The root _Pipeline_ class 
@@ -835,19 +845,19 @@ implement the PipelineStage interface. Use the Transformer interface for algorit
 Estimator interface for algorithms that do require training.
 
 _Custom transformers_ in addition to the obvious transform or fit function, all pipeline stages need to provide a 
- transformSchema function and a copy constructor, or implement a class that provides these for you. In addition to 
- producing the output schema, the transformSchema function should validate that the input schema is suitable for the
-  stage (for example checking the data types). Your pipeline stage can be configurable using the params interface, 
-  the two most common parameters are input column and output column.
+transformSchema function and a copy constructor, or implement a class that provides these for you. In addition to 
+producing the output schema, the transformSchema function should validate that the input schema is suitable for the
+stage (for example checking the data types). Your pipeline stage can be configurable using the params interface, 
+the two most common parameters are input column and output column.
 
 _Custom estimators_ the primary difference between the Estimator and Transformer interfaces is that rather than 
 directly expressing your transformation on the input, you will first have a training step in the form of a train 
 function. For many algorithms, the _org.apache.spark.ml.Predictor_ or _org.apache.spark.ml.classificationClassifier_
- helper classes are easier to work with than directly using the Estimator interface. The Predictor interface adds 
- the two most common parameters (input and output columns, as labels column, features column, and prediction column)
-  and automatically handles the schema transformation for us. The Classifier interface is similar to the Predictor 
-  interface. The predictor interface additionally includes a rawPredictionColumn in the output and provides tools to
-   detect the number of classes (getNumClasses), which are helpful for classification problems.
+helper classes are easier to work with than directly using the Estimator interface. The Predictor interface adds 
+the two most common parameters (input and output columns, as labels column, features column, and prediction column)
+and automatically handles the schema transformation for us. The Classifier interface is similar to the Predictor 
+interface. The predictor interface additionally includes a rawPredictionColumn in the output and provides tools to
+detect the number of classes (getNumClasses), which are helpful for classification problems.
 
 
 ## Chapter 10: Spark Components and Packages<a name="Chapter10"></a>
@@ -865,11 +875,11 @@ MQTT.
 Many of Spark’s DStream sources depend on dedicated receiver processes to read in data from your streaming sources 
 (not Kafka neither file-based sources). In the receiver-based configuration, a certain number of workers are 
 configured to read data from the input data streams, for receiver-based approaches, the partitioning of your DStream
- reflects your receiver configuration. In the direct (receiverless) approaches the initial partitioning is based on 
- the partitioning of the input stream. If your data is not ideally partitioned for processing, explicitly 
- repartitioning as we can on RDDs is the simplest way to fix it (when repartitioning keyed data, having a known 
- partitioner can speed up many operations). If the bottleneck comes from reading, you must increase the number of 
- the partitions in the input data source (for direct) or number of receivers: 
+reflects your receiver configuration. In the direct (receiverless) approaches the initial partitioning is based on 
+the partitioning of the input stream. If your data is not ideally partitioned for processing, explicitly 
+repartitioning as we can on RDDs is the simplest way to fix it (when repartitioning keyed data, having a known 
+partitioner can speed up many operations). If the bottleneck comes from reading, you must increase the number of 
+the partitions in the input data source (for direct) or number of receivers: 
 
 ```scala
 //transform takes the RDD for each time slice and applies your transformations.
@@ -879,9 +889,9 @@ def dStreamRepartition[A: ClassTag](dstream: DStream[A]):DStream[A] = stream.tra
 ### Batch Intervals
 Spark Streaming processes each batch interval completely before starting the next one, you should set your batch 
 interval to be high enough for the previous batch to be processed before the next one starts (starts with a high 
-value and reduce until you 
-find the optimal). In the DStream API the interval is configured on application/context level like in `new 
-StreamingContext(sc, Seconds(1))`, for the Structured Streaming API is configured on a per-output/query.
+value and reduce until you find the optimal). In the DStream API the interval is configured on application/context
+level like in `new StreamingContext(sc, Seconds(1))`, for the Structured Streaming API is configured on a per
+output/query.
 
 ### Data Checkpoint Intervals
 As with iterative algorithms, streaming operations can generate DAGs or query plans that are too large for the 
@@ -914,14 +924,18 @@ To load a streaming data source simply call readStream instead of read: `session
 //Sampling schema inference doesn’t work with streaming data`
 
 #### Output operations
-An important required configuration is the out putMode, which is unique and can be set to either append (for new 
+An important required configuration is the outputMode, which is unique and can be set to either append (for new 
 rows) or complete (for all rows). The DataStreamWriter can write collections out to the following formats: _console_
  (writes the result out to the terminal), _foreach_ (format can't be specified, it must be set by calling foreach on
   the writer object and set up the desired function), and _memory_ (writes the result out to a local table):
 ```scala
-dsStream.writeStream.outputMode(OutputMode.Complete())
-.format("parquet").trigger(ProcessingTime(1.second))
-.queryName("pandas").start()
+dsStream
+  .writeStream
+  .outputMode(OutputMode.Complete())
+  .format("parquet")
+  .trigger(ProcessingTime(1.second))
+  .queryName("pandas")
+  .start()
 ```
 
 #### Custom sinks
@@ -934,7 +948,6 @@ dsStream.writeStream.outputMode(OutputMode.Complete())
 The machine learning API is not yet integrated in the Structured Streaming, although you can get it work with custom
  work. Spark’s Structured Streaming has an in-memory table output format that you can use to store the aggregate 
  counts:
-
 `ds.writeStream.outputMode(OutputMode.Complete()).format("memory").queryName(myTblName).start()`
 
 You can also can come up with an update mechanism on how to merge new data into your existing model, the DStream 
@@ -954,10 +967,10 @@ recovery:
 ```scala
 // Accumulators and broadcast variables are not currently recovered in high availability mode.
 def createStreamingContext(): StreamingContext = { 
-val ssc = new StreamingContext(sc, Seconds(1))
-// Then create whatever stream is required, and whatever mappings need to go on those streams
-ssc.checkpoint(checkpointDir)
-ssc
+  val ssc = new StreamingContext(sc, Seconds(1))
+  // Then create whatever stream is required, and whatever mappings need to go on those streams
+  ssc.checkpoint(checkpointDir)
+  ssc
 }
 val ssc = StreamingContext.getOrCreate(checkpointDir,createStreamingContext _)
 // Do whatever work needs to be done regardless of state, start context and run
@@ -988,10 +1001,9 @@ The size of the driver, size of the executors, and the number of cores associate
 configurable from the conf and static for the duration of a Spark application (all executors should be of equal size).
 In YARN cluster mode and YARN client mode the executor memory overhead is set with _the spark.yarn.executor
 .memoryOverhead_ value. In YARN cluster mode the driver memory is set with _spark.yarn.driver.memoryOverhead_, but 
-in YARN client mode that value is called _spark.yarn.am.memoryOverhead_. Follow the following rule to calculate the 
-requirements:
-MEMORY OVERHEAD =Max(MEMORY_OVERHEAD_FACTOR x requested memory, MEMORY_OVERHEAD_MINIMUM). Where 
-MEMORY_OVERHEAD_FACTOR = 0.10 and MEMORY_OVERHEAD_MINIMUM = 384 mb.
+in YARN client mode that value is called _spark.yarn.am.memoryOverhead_. Follow the rule to calculate the requirements:
+MEMORY OVERHEAD =Max(MEMORY_OVERHEAD_FACTOR x requested memory, MEMORY_OVERHEAD_MINIMUM). Where MEMORY_OVERHEAD_FACTOR 
+equals 0.10 and MEMORY_OVERHEAD_MINIMUM is 384 mb.
 Jobs may fail if they collect too much data to the driver or perform large local computations, increasing the driver
  memory with _spark.driver.maxResultSize_ may prevent the out-of-memory errors in the driver (set to 0 to disregard 
  the limit). In YARN and Mesos cluster mode, the driver can be run with more cores with _spark.driver.cores_, 
@@ -1008,7 +1020,7 @@ Jobs may fail if they collect too much data to the driver or perform large local
     may cause delays in garbage collection. Experience shows that five cores per executor should be the upper limit. 
 
 #### Allocating Cluster Resources and Dynamic Allocation
-Dynamic allocation is a process by which a Spark application can request and de- commission executors as needed 
+Dynamic allocation is a process by which a Spark application can request and decommission executors as needed 
 throughout the course of an application. With dynamic allocation, Spark requests additional executors when there are
  pending tasks. Second, Spark decommissions executors that have not been used to compute a job in the amount of time
   specified by the _spark.dynamicAllocation.executorIdleTime_. By default Spark doesn't decommission nodes with 
@@ -1023,7 +1035,7 @@ The number of executors that Spark should start with when an application is laun
     * Set the configuration value spark.dynamicAllocation.enabled to true.
     * Configure an external shuffle service on each worker. This varies based on the cluster manager, check Spark 
     documentation for details.
-    * Setspark.shuffle.service.enabled to true.
+    * Set spark.shuffle.service.enabled to true.
     * Do not provide a value for the spark.executor.instances parameter.
 
 #### Dividing the Space Within One Executor
@@ -1045,22 +1057,16 @@ splits configured in that input format. If the number of partitions is not speci
 Spark defaults to using the number specified by the conf value of _spark.default.parallelism_. At a minimum you 
 should use as many partitions as total cores, increasing the number of partitions can also help reduce out-of-memory
  errors. An strategy to determine the optimal number of partitions can be:
-
 `memory_for_compute (M)<(spark.executor.memory - over head) * spark.memory.fraction`
 
 And if there is cached data:
-
-```text
-memory_for_compute (M - R) < (spark.executor.memory - overhead) x 
-    spark.memory.fraction x (1 - spark.memory.storage.fraction)
-```
+`memory_for_compute (M - R) < (spark.executor.memory - overhead) x 
+    spark.memory.fraction x (1 - spark.memory.storage.fraction)`
 
 Assuming this space is divided equally between the tasks, then each task should not take more than:
-
 `memory_per_task = memory_for_compute / spark.executor.cores`
 
 Thus, we should set the number of partitions to:
-
 `number_of_partitions = size of shuffle stage / memory per task`
 
 We can also try to observe the shuffle stage to determine the memory cost of a shuffle. If we observe that during 
